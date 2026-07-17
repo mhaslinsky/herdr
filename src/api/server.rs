@@ -82,6 +82,10 @@ pub fn start_server_with_capabilities(
     let listener = bind_local_listener(&path)?;
     restrict_socket_permissions(&path)?;
     let identity = socket_file_identity(&path)?;
+    if let Err(error) = crate::terminal::prepare_wait_lease_runtime(&path) {
+        let _ = remove_socket_file_if_owned(&path, &identity);
+        return Err(error);
+    }
     info!(path = %path.display(), "api server listening");
 
     let running = Arc::new(AtomicBool::new(true));
@@ -846,6 +850,7 @@ mod tests {
         crate::api::schema::PaneInfo {
             pane_id: pane_id.into(),
             terminal_id: "term_1".into(),
+            terminal_generation: 0,
             workspace_id: "ws_1".into(),
             tab_id: "tab_1".into(),
             focused: true,

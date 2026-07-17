@@ -77,8 +77,12 @@ impl App {
         for pending in pending_requests {
             let (response, request_changed) = self.apply_wait_lease_request(&pending.request);
             changed |= request_changed;
+            let request = pending.request.clone();
             if let Err(error) = crate::terminal::complete_wait_lease_request(pending, &response) {
                 tracing::warn!(err = %error, "failed to complete wait lease request");
+                if request_changed {
+                    changed |= self.rollback_unacknowledged_wait_lease_acquire(&request);
+                }
             }
         }
         changed
@@ -102,6 +106,7 @@ impl App {
             crate::terminal::WaitLeaseOperation::Acquire {
                 pane_id,
                 terminal_id,
+                terminal_generation,
                 job_id,
                 ttl_ms,
                 token,
@@ -110,6 +115,7 @@ impl App {
                 request.request_id.clone(),
                 pane_id,
                 terminal_id,
+                *terminal_generation,
                 job_id,
                 *ttl_ms,
                 token,
@@ -118,12 +124,14 @@ impl App {
             crate::terminal::WaitLeaseOperation::Release {
                 pane_id,
                 terminal_id,
+                terminal_generation,
                 job_id,
                 token,
             } => self.apply_wait_lease_release(
                 request.request_id.clone(),
                 pane_id,
                 terminal_id,
+                *terminal_generation,
                 job_id,
                 token,
             ),
@@ -136,6 +144,7 @@ impl App {
         request_id: String,
         public_pane_id: &str,
         expected_terminal_id: &str,
+        expected_terminal_generation: u64,
         job_id: &str,
         ttl_ms: u64,
         token: &str,
@@ -220,7 +229,27 @@ impl App {
         let Some(terminal) = self.state.terminals.get_mut(&terminal_id) else {
             return wait_lease_error(request_id, "pane_not_found", "pane was not found");
         };
-        if terminal.last_released_wait_lease_token.as_deref() == Some(token) {
+        if terminal.runtime_generation != expected_terminal_generation {
+            return wait_lease_error(
+                request_id,
+                "wait_lease_pane_generation_changed",
+                "pane generation changed before the lease was acquired",
+            );
+        }
+        if terminal
+            .wait_lease_revocations
+            .acquire_guard_saturated(now_ms)
+        {
+            return wait_lease_error(
+                request_id,
+                "wait_lease_replay_guard_saturated",
+                "wait lease replay protection is saturated until prior revocations expire",
+            );
+        }
+        if terminal
+            .wait_lease_revocations
+            .token_is_revoked(token, now_ms)
+        {
             return wait_lease_error(
                 request_id,
                 "wait_lease_token_revoked",
@@ -246,7 +275,6 @@ impl App {
                     "pane already has an active wait lease",
                 );
             }
-            terminal.last_released_wait_lease_token = Some(existing.token().to_string());
             terminal.wait_lease = None;
         }
 
@@ -273,6 +301,7 @@ impl App {
         request_id: String,
         public_pane_id: &str,
         expected_terminal_id: &str,
+        expected_terminal_generation: u64,
         job_id: &str,
         token: &str,
     ) -> (crate::terminal::WaitLeaseResponse, bool) {
@@ -308,19 +337,50 @@ impl App {
         let Some(terminal) = self.state.terminals.get_mut(&terminal_id) else {
             return wait_lease_error(request_id, "pane_not_found", "pane was not found");
         };
-        if terminal.last_released_wait_lease_token.as_deref() == Some(token) {
+        if terminal.runtime_generation != expected_terminal_generation {
+            return wait_lease_error(
+                request_id,
+                "wait_lease_pane_generation_changed",
+                "pane generation changed before the lease was released",
+            );
+        }
+        let normalized_job_id = job_id.trim();
+        if normalized_job_id.is_empty() || normalized_job_id.len() > 128 {
+            return wait_lease_error(
+                request_id,
+                "invalid_wait_lease_job_id",
+                "wait lease job id must be between 1 and 128 characters",
+            );
+        }
+        if token.len() != 64 || !token.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return wait_lease_error(
+                request_id,
+                "invalid_wait_lease_token",
+                "wait lease token is invalid",
+            );
+        }
+        if let Some(released) = terminal
+            .wait_lease_revocations
+            .prior_release_result(token, now_ms)
+        {
             return (
-                crate::terminal::WaitLeaseResponse::released(request_id, true),
+                crate::terminal::WaitLeaseResponse::released(request_id, released),
                 false,
             );
         }
         let Some(lease) = terminal.wait_lease.as_ref() else {
+            terminal.wait_lease_revocations.record(
+                token.to_string(),
+                now_ms.saturating_add(crate::terminal::MAX_WAIT_LEASE_TTL_MS),
+                false,
+                now_ms,
+            );
             return (
                 crate::terminal::WaitLeaseResponse::released(request_id, false),
                 false,
             );
         };
-        if lease.job_id() != job_id || !lease.token_matches(token) {
+        if lease.job_id() != normalized_job_id || !lease.token_matches(token) {
             return wait_lease_error(
                 request_id,
                 "wait_lease_token_mismatch",
@@ -328,8 +388,13 @@ impl App {
             );
         }
         let released = lease.is_active_at(now_ms);
-        terminal.last_released_wait_lease_token = Some(token.to_string());
         terminal.wait_lease = None;
+        terminal.wait_lease_revocations.record(
+            token.to_string(),
+            now_ms.saturating_add(crate::terminal::MAX_WAIT_LEASE_TTL_MS),
+            released,
+            now_ms,
+        );
         terminal.revision = terminal.revision.wrapping_add(1);
         self.emit_pane_updated(workspace_index, pane_id);
         (
@@ -362,16 +427,69 @@ impl App {
         }
         for (workspace_index, pane_id, terminal_id) in &expired {
             if let Some(terminal) = self.state.terminals.get_mut(terminal_id) {
-                terminal.last_released_wait_lease_token = terminal
-                    .wait_lease
-                    .as_ref()
-                    .map(|lease| lease.token().to_string());
                 terminal.wait_lease = None;
                 terminal.revision = terminal.revision.wrapping_add(1);
             }
             self.emit_pane_updated(*workspace_index, *pane_id);
         }
         !expired.is_empty()
+    }
+
+    fn rollback_unacknowledged_wait_lease_acquire(
+        &mut self,
+        request: &crate::terminal::WaitLeaseRequest,
+    ) -> bool {
+        let crate::terminal::WaitLeaseOperation::Acquire {
+            pane_id,
+            terminal_id,
+            terminal_generation,
+            token,
+            ..
+        } = &request.operation
+        else {
+            return false;
+        };
+        let Some((workspace_index, internal_pane_id)) = self.parse_pane_id(pane_id) else {
+            return false;
+        };
+        let Some(attached_terminal_id) = self
+            .state
+            .workspaces
+            .get(workspace_index)
+            .and_then(|workspace| workspace.pane_state(internal_pane_id))
+            .map(|pane| pane.attached_terminal_id.clone())
+        else {
+            return false;
+        };
+        if attached_terminal_id.to_string() != *terminal_id {
+            return false;
+        }
+        let Ok(now_ms) = crate::platform::continuous_clock_ms() else {
+            return false;
+        };
+        let Some(terminal) = self.state.terminals.get_mut(&attached_terminal_id) else {
+            return false;
+        };
+        if terminal.runtime_generation != *terminal_generation {
+            return false;
+        }
+        if !terminal
+            .wait_lease
+            .as_ref()
+            .is_some_and(|lease| lease.token_matches(token))
+        {
+            return false;
+        }
+        terminal.wait_lease = None;
+        terminal.wait_lease_revocations.record(
+            token.clone(),
+            now_ms.saturating_add(crate::terminal::MAX_WAIT_LEASE_TTL_MS),
+            false,
+            now_ms,
+        );
+        terminal.revision = terminal.revision.wrapping_add(1);
+        self.emit_pane_updated(workspace_index, internal_pane_id);
+        true
     }
 
     pub(crate) fn reap_finished_custom_commands(&mut self) {
@@ -1104,16 +1222,52 @@ mod tests {
         token: &str,
         requested_at_ms: u64,
     ) -> crate::terminal::WaitLeaseRequest {
+        acquire_request_for_job(
+            public_pane_id,
+            terminal_id,
+            "background-review",
+            token,
+            requested_at_ms,
+        )
+    }
+
+    fn acquire_request_for_job(
+        public_pane_id: &str,
+        terminal_id: &str,
+        job_id: &str,
+        token: &str,
+        requested_at_ms: u64,
+    ) -> crate::terminal::WaitLeaseRequest {
         crate::terminal::WaitLeaseRequest {
             version: 1,
             request_id: "acquire-request".into(),
             operation: crate::terminal::WaitLeaseOperation::Acquire {
                 pane_id: public_pane_id.into(),
                 terminal_id: terminal_id.into(),
-                job_id: "background-review".into(),
+                terminal_generation: 0,
+                job_id: job_id.into(),
                 ttl_ms: 60_000,
                 token: token.into(),
                 requested_at_ms,
+            },
+        }
+    }
+
+    fn release_request(
+        public_pane_id: &str,
+        terminal_id: &str,
+        job_id: &str,
+        token: &str,
+    ) -> crate::terminal::WaitLeaseRequest {
+        crate::terminal::WaitLeaseRequest {
+            version: 1,
+            request_id: "release-request".into(),
+            operation: crate::terminal::WaitLeaseOperation::Release {
+                pane_id: public_pane_id.into(),
+                terminal_id: terminal_id.into(),
+                terminal_generation: 0,
+                job_id: job_id.into(),
+                token: token.into(),
             },
         }
     }
@@ -1160,6 +1314,7 @@ mod tests {
             operation: crate::terminal::WaitLeaseOperation::Release {
                 pane_id: public_pane_id.clone(),
                 terminal_id: terminal_id.clone(),
+                terminal_generation: 0,
                 job_id: "background-review".into(),
                 token: "b".repeat(64),
             },
@@ -1178,6 +1333,7 @@ mod tests {
             operation: crate::terminal::WaitLeaseOperation::Release {
                 pane_id: public_pane_id,
                 terminal_id,
+                terminal_generation: 0,
                 job_id: "background-review".into(),
                 token,
             },
@@ -1200,6 +1356,12 @@ mod tests {
     #[test]
     fn wait_lease_rejects_stale_pane_generation_and_expired_request() {
         let (mut app, public_pane_id, terminal_id) = wait_lease_test_app();
+        let pane_id = app.state.workspaces[0].tabs[0].root_pane;
+        let attached_terminal_id = app.state.workspaces[0]
+            .pane_state(pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
         let now_ms = crate::platform::continuous_clock_ms().unwrap();
         let token = "c".repeat(64);
         let stale_generation = acquire_request(&public_pane_id, "term_stale", &token, now_ms);
@@ -1223,6 +1385,172 @@ mod tests {
             response.result,
             crate::terminal::WaitLeaseResponseResult::Error { ref code, .. }
                 if code == "wait_lease_request_expired"
+        ));
+
+        app.state
+            .terminals
+            .get_mut(&attached_terminal_id)
+            .unwrap()
+            .clear_wait_lease_runtime_identity();
+        let stale_runtime = acquire_request(&public_pane_id, &terminal_id, &token, now_ms);
+        let (response, changed) = app.apply_wait_lease_request(&stale_runtime);
+        assert!(!changed);
+        assert!(matches!(
+            response.result,
+            crate::terminal::WaitLeaseResponseResult::Error { ref code, .. }
+                if code == "wait_lease_pane_generation_changed"
+        ));
+    }
+
+    #[test]
+    fn wait_lease_revocations_reject_old_and_preemptively_released_tokens() {
+        let (mut app, public_pane_id, terminal_id) = wait_lease_test_app();
+        let now_ms = crate::platform::continuous_clock_ms().unwrap();
+        let token_a = "a".repeat(64);
+        let token_b = "b".repeat(64);
+        let token_c = "c".repeat(64);
+
+        let (_, changed) = app.apply_wait_lease_request(&acquire_request(
+            &public_pane_id,
+            &terminal_id,
+            &token_a,
+            now_ms,
+        ));
+        assert!(changed);
+        let (_, changed) = app.apply_wait_lease_request(&release_request(
+            &public_pane_id,
+            &terminal_id,
+            "background-review",
+            &token_a,
+        ));
+        assert!(changed);
+
+        let (_, changed) = app.apply_wait_lease_request(&acquire_request(
+            &public_pane_id,
+            &terminal_id,
+            &token_b,
+            now_ms,
+        ));
+        assert!(changed);
+        let (_, changed) = app.apply_wait_lease_request(&release_request(
+            &public_pane_id,
+            &terminal_id,
+            "background-review",
+            &token_b,
+        ));
+        assert!(changed);
+
+        let (replayed, changed) = app.apply_wait_lease_request(&acquire_request(
+            &public_pane_id,
+            &terminal_id,
+            &token_a,
+            now_ms,
+        ));
+        assert!(!changed);
+        assert!(matches!(
+            replayed.result,
+            crate::terminal::WaitLeaseResponseResult::Error { ref code, .. }
+                if code == "wait_lease_token_revoked"
+        ));
+
+        let (released, changed) = app.apply_wait_lease_request(&release_request(
+            &public_pane_id,
+            &terminal_id,
+            "background-review",
+            &token_c,
+        ));
+        assert!(!changed);
+        assert!(matches!(
+            released.result,
+            crate::terminal::WaitLeaseResponseResult::Released { released: false }
+        ));
+        let (replayed, changed) = app.apply_wait_lease_request(&acquire_request(
+            &public_pane_id,
+            &terminal_id,
+            &token_c,
+            now_ms,
+        ));
+        assert!(!changed);
+        assert!(matches!(
+            replayed.result,
+            crate::terminal::WaitLeaseResponseResult::Error { ref code, .. }
+                if code == "wait_lease_token_revoked"
+        ));
+    }
+
+    #[test]
+    fn wait_lease_release_normalizes_job_id_and_reports_expiry_as_not_released() {
+        let (mut app, public_pane_id, terminal_id) = wait_lease_test_app();
+        let pane_id = app.state.workspaces[0].tabs[0].root_pane;
+        let attached_terminal_id = app.state.workspaces[0]
+            .pane_state(pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        let now_ms = crate::platform::continuous_clock_ms().unwrap();
+        let token = "d".repeat(64);
+
+        let (_, changed) = app.apply_wait_lease_request(&acquire_request_for_job(
+            &public_pane_id,
+            &terminal_id,
+            " background-review ",
+            &token,
+            now_ms,
+        ));
+        assert!(changed);
+        let (released, changed) = app.apply_wait_lease_request(&release_request(
+            &public_pane_id,
+            &terminal_id,
+            " background-review ",
+            &token,
+        ));
+        assert!(changed);
+        assert!(matches!(
+            released.result,
+            crate::terminal::WaitLeaseResponseResult::Released { released: true }
+        ));
+
+        let expired_token = "e".repeat(64);
+        app.state
+            .terminals
+            .get_mut(&attached_terminal_id)
+            .unwrap()
+            .wait_lease = Some(crate::terminal::WaitLease::new(
+            "background-review".into(),
+            expired_token.clone(),
+            now_ms,
+        ));
+        assert!(app.expire_wait_leases());
+        let (released, changed) = app.apply_wait_lease_request(&release_request(
+            &public_pane_id,
+            &terminal_id,
+            "background-review",
+            &expired_token,
+        ));
+        assert!(!changed);
+        assert!(matches!(
+            released.result,
+            crate::terminal::WaitLeaseResponseResult::Released { released: false }
+        ));
+    }
+
+    #[test]
+    fn unacknowledged_wait_lease_acquire_is_rolled_back_and_revoked() {
+        let (mut app, public_pane_id, terminal_id) = wait_lease_test_app();
+        let now_ms = crate::platform::continuous_clock_ms().unwrap();
+        let token = "f".repeat(64);
+        let request = acquire_request(&public_pane_id, &terminal_id, &token, now_ms);
+
+        let (_, changed) = app.apply_wait_lease_request(&request);
+        assert!(changed);
+        assert!(app.rollback_unacknowledged_wait_lease_acquire(&request));
+
+        let (replayed, changed) = app.apply_wait_lease_request(&request);
+        assert!(!changed);
+        assert!(matches!(
+            replayed.result,
+            crate::terminal::WaitLeaseResponseResult::Error { ref code, .. }
+                if code == "wait_lease_token_revoked"
         ));
     }
 

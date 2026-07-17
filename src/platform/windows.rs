@@ -1,7 +1,10 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     ffi::c_void,
+    fs::File,
+    io::Write,
     mem::{size_of, MaybeUninit},
+    os::windows::{ffi::OsStrExt, io::FromRawHandle},
     path::PathBuf,
     ptr::{copy_nonoverlapping, null_mut},
 };
@@ -10,9 +13,16 @@ use windows_sys::{
     Wdk::System::Threading::{NtQueryInformationProcess, ProcessBasicInformation},
     Win32::{
         Foundation::{
-            CloseHandle, GlobalFree, LocalFree, HANDLE, INVALID_HANDLE_VALUE, NTSTATUS,
-            STATUS_SUCCESS, UNICODE_STRING,
+            CloseHandle, GlobalFree, LocalFree, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE,
+            NTSTATUS, STATUS_SUCCESS, UNICODE_STRING,
         },
+        Security::{
+            Authorization::{
+                ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+            },
+            PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES,
+        },
+        Storage::FileSystem::{CreateFileW, CREATE_NEW, FILE_ATTRIBUTE_NORMAL},
         System::{
             Console::GetConsoleWindow,
             DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData},
@@ -40,13 +50,58 @@ use windows_sys::{
 use super::{ClipboardImage, ForegroundJob, Signal};
 
 const STILL_ACTIVE: u32 = 259;
+const OWNER_ONLY_FILE_SDDL: &str = "D:P(A;;FA;;;OW)\0";
 
 pub(crate) fn continuous_clock_ms() -> std::io::Result<u64> {
     Ok(unsafe { GetTickCount64() })
 }
 
 pub(crate) fn write_private_file(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
-    std::fs::write(path, bytes)
+    let descriptor_text = OWNER_ONLY_FILE_SDDL.encode_utf16().collect::<Vec<_>>();
+    let mut security_descriptor: PSECURITY_DESCRIPTOR = null_mut();
+    if unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            descriptor_text.as_ptr(),
+            SDDL_REVISION_1,
+            &mut security_descriptor,
+            null_mut(),
+        )
+    } == 0
+    {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    let security_attributes = SECURITY_ATTRIBUTES {
+        nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: security_descriptor,
+        bInheritHandle: 0,
+    };
+    let path_wide = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let handle = unsafe {
+        CreateFileW(
+            path_wide.as_ptr(),
+            GENERIC_WRITE,
+            0,
+            &security_attributes,
+            CREATE_NEW,
+            FILE_ATTRIBUTE_NORMAL,
+            null_mut(),
+        )
+    };
+    let create_error = (handle == INVALID_HANDLE_VALUE).then(std::io::Error::last_os_error);
+    unsafe {
+        LocalFree(security_descriptor);
+    }
+    if let Some(error) = create_error {
+        return Err(error);
+    }
+
+    let mut file = unsafe { File::from_raw_handle(handle) };
+    file.write_all(bytes)
 }
 
 pub(crate) fn should_draw_host_cursor_by_default() -> bool {

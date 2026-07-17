@@ -151,6 +151,10 @@ like `ctrl+h`, `control+j`, `alt+x`, and `shift+tab`, function keys like
 Herdr returns that pane. When it is omitted, Herdr returns the active focused
 pane.
 
+`PaneInfo.terminal_generation` increments whenever Herdr replaces the runtime
+behind a terminal id. Automation that submits work for later processing should
+bind it to both values so a replacement process cannot inherit stale work.
+
 `PaneInfo` includes `scroll` when terminal scroll metrics are available:
 
 ```json

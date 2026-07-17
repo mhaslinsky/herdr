@@ -401,6 +401,7 @@ pub struct WaitLeaseInfo {
 pub struct PaneInfo {
     pub pane_id: String,
     pub terminal_id: String,
+    pub terminal_generation: u64,
     pub workspace_id: String,
     pub tab_id: String,
     pub focused: bool,

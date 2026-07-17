@@ -1471,8 +1471,14 @@ fn pane_wait_lease(args: &[String]) -> std::io::Result<i32> {
                 eprintln!("--token is only valid for release");
                 return Ok(2);
             }
-            let terminal_id = wait_lease_terminal_id(&pane_id)?;
-            let result = crate::terminal::acquire_wait_lease(pane_id, terminal_id, job_id, ttl_ms)?;
+            let (terminal_id, terminal_generation) = wait_lease_terminal_identity(&pane_id)?;
+            let result = crate::terminal::acquire_wait_lease(
+                pane_id,
+                terminal_id,
+                terminal_generation,
+                job_id,
+                ttl_ms,
+            )?;
             print_wait_lease_result(result)
         }
         "release" => {
@@ -1486,8 +1492,14 @@ fn pane_wait_lease(args: &[String]) -> std::io::Result<i32> {
                 eprintln!("--ttl-ms is only valid for acquire");
                 return Ok(2);
             }
-            let terminal_id = wait_lease_terminal_id(&pane_id)?;
-            let result = crate::terminal::release_wait_lease(pane_id, terminal_id, job_id, token)?;
+            let (terminal_id, terminal_generation) = wait_lease_terminal_identity(&pane_id)?;
+            let result = crate::terminal::release_wait_lease(
+                pane_id,
+                terminal_id,
+                terminal_generation,
+                job_id,
+                token,
+            )?;
             print_wait_lease_result(result)
         }
         _ => {
@@ -1497,7 +1509,7 @@ fn pane_wait_lease(args: &[String]) -> std::io::Result<i32> {
     }
 }
 
-fn wait_lease_terminal_id(pane_id: &str) -> std::io::Result<String> {
+fn wait_lease_terminal_identity(pane_id: &str) -> std::io::Result<(String, u64)> {
     let response = super::send_request(&Request {
         id: "cli:pane:wait-lease:identity".into(),
         method: Method::PaneGet(PaneTarget {
@@ -1507,10 +1519,16 @@ fn wait_lease_terminal_id(pane_id: &str) -> std::io::Result<String> {
     if let Some(error) = response.get("error") {
         return Err(std::io::Error::other(error.to_string()));
     }
-    response["result"]["pane"]["terminal_id"]
+    let terminal_id = response["result"]["pane"]["terminal_id"]
         .as_str()
         .map(str::to_string)
-        .ok_or_else(|| std::io::Error::other("pane response did not include terminal identity"))
+        .ok_or_else(|| std::io::Error::other("pane response did not include terminal identity"))?;
+    let terminal_generation = response["result"]["pane"]["terminal_generation"]
+        .as_u64()
+        .ok_or_else(|| {
+            std::io::Error::other("pane response did not include terminal generation")
+        })?;
+    Ok((terminal_id, terminal_generation))
 }
 
 fn print_wait_lease_result(

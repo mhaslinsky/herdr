@@ -542,8 +542,14 @@ impl App {
         };
 
         self.terminal_runtimes.insert(terminal_id.clone(), runtime);
-        if let Some(terminal) = self.state.terminals.get_mut(&terminal_id) {
-            terminal.clear_agent_runtime_identity_after_respawn();
+        let runtime_identity_replaced = self
+            .state
+            .terminals
+            .get_mut(&terminal_id)
+            .map(|terminal| terminal.clear_agent_runtime_identity_after_respawn())
+            .is_some();
+        if runtime_identity_replaced {
+            self.emit_pane_updated(ws_idx, pane_id);
         }
         self.state.focus_pane_in_workspace(ws_idx, pane_id);
         self.schedule_session_save();
