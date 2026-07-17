@@ -77,6 +77,7 @@ pub struct TerminalStateMutation {
 /// metadata.
 pub struct TerminalState {
     pub id: TerminalId,
+    pub runtime_generation: u64,
     pub cwd: PathBuf,
     pub detected_agent: Option<Agent>,
     pub fallback_state: AgentState,
@@ -101,12 +102,15 @@ pub struct TerminalState {
     pub respawn_shell_on_exit: bool,
     recent_agent_process_exit_at: Option<Instant>,
     pub pending_agent_resume_plan: Option<crate::agent_resume::AgentResumePlan>,
+    pub wait_lease: Option<crate::terminal::WaitLease>,
+    pub(crate) wait_lease_revocations: crate::terminal::WaitLeaseRevocations,
 }
 
 impl TerminalState {
     pub fn new(id: TerminalId, cwd: PathBuf) -> Self {
         Self {
             id,
+            runtime_generation: 0,
             cwd,
             detected_agent: None,
             fallback_state: AgentState::Unknown,
@@ -131,7 +135,15 @@ impl TerminalState {
             respawn_shell_on_exit: false,
             recent_agent_process_exit_at: None,
             pending_agent_resume_plan: None,
+            wait_lease: None,
+            wait_lease_revocations: crate::terminal::WaitLeaseRevocations::default(),
         }
+    }
+
+    pub fn active_wait_lease_at(&self, now_ms: u64) -> Option<crate::terminal::ActiveWaitLease> {
+        self.wait_lease
+            .as_ref()
+            .and_then(|lease| lease.active_at(now_ms))
     }
 
     pub(crate) fn terminal_title_stripped(&self) -> Option<String> {
@@ -1328,6 +1340,14 @@ impl TerminalState {
         self.recent_agent_process_exit_at = None;
         self.pending_agent_resume_plan = None;
         self.clear_agent_name();
+        self.clear_wait_lease_runtime_identity();
+    }
+
+    pub(crate) fn clear_wait_lease_runtime_identity(&mut self) {
+        self.wait_lease = None;
+        self.wait_lease_revocations.clear();
+        self.runtime_generation = self.runtime_generation.wrapping_add(1);
+        self.revision = self.revision.wrapping_add(1);
     }
 
     pub fn is_agent_terminal(&self) -> bool {
@@ -1584,7 +1604,7 @@ mod tests {
         let session_a = test_session_path("pi-session-a.jsonl");
         let session_b = test_session_path("pi-session-b.jsonl");
         terminal.set_detected_state(Some(Agent::Pi), AgentState::Idle);
-        terminal.set_hook_authority_with_session_ref(
+        terminal.set_hook_authority_at(
             "herdr:pi".into(),
             "pi".into(),
             AgentState::Idle,
@@ -1789,7 +1809,7 @@ mod tests {
         let now = Instant::now();
         let mut terminal = test_terminal();
         terminal.set_detected_state(Some(Agent::Pi), AgentState::Working);
-        terminal.set_hook_authority_at(
+        terminal.set_hook_authority_with_session_ref(
             "herdr:pi".into(),
             "pi".into(),
             AgentState::Working,
@@ -1876,13 +1896,14 @@ mod tests {
         let mut terminal = test_terminal();
         let session_path = test_session_path("pi.jsonl");
         terminal.set_detected_state(Some(Agent::Pi), AgentState::Working);
-        terminal.set_hook_authority_with_session_ref(
+        terminal.set_hook_authority_at(
             "herdr:pi".into(),
             "pi".into(),
             AgentState::Working,
             None,
             crate::agent_resume::AgentSessionRef::path(session_path.clone()),
             Some(20),
+            now,
         );
 
         terminal.set_detected_state_with_screen_signals_at(
@@ -1894,13 +1915,14 @@ mod tests {
             true,
             now + Duration::from_millis(1),
         );
-        let late = terminal.set_hook_authority_with_session_ref(
+        let late = terminal.set_hook_authority_at(
             "herdr:pi".into(),
             "pi".into(),
             AgentState::Working,
             None,
             crate::agent_resume::AgentSessionRef::path(session_path),
             Some(21),
+            now + Duration::from_millis(2),
         );
 
         assert!(late.is_none());
@@ -4263,6 +4285,7 @@ mod tests {
     #[test]
     fn respawn_cleanup_resets_restored_agent_status() {
         let mut terminal = test_terminal();
+        let wait_lease_token = "a".repeat(64);
         terminal.respawn_shell_on_exit = true;
         terminal.set_agent_name("codex".into());
         terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
@@ -4271,6 +4294,14 @@ mod tests {
             session_ref: crate::agent_resume::AgentSessionRef::id("codex-session").unwrap(),
         });
         terminal.set_detected_state(Some(Agent::Codex), AgentState::Idle);
+        terminal.wait_lease = Some(crate::terminal::WaitLease::new(
+            "review".into(),
+            wait_lease_token.clone(),
+            60_000,
+        ));
+        terminal
+            .wait_lease_revocations
+            .record("b".repeat(64), 60_000, true, 1_000);
 
         terminal.clear_agent_runtime_identity_after_respawn();
 
@@ -4279,6 +4310,14 @@ mod tests {
         assert!(terminal.agent_name.is_none());
         assert!(terminal.persisted_agent_session.is_none());
         assert!(!terminal.respawn_shell_on_exit);
+        assert_eq!(terminal.runtime_generation, 1);
+        assert!(terminal.wait_lease.is_none());
+        assert!(!terminal
+            .wait_lease_revocations
+            .token_is_revoked(&wait_lease_token, 1_000));
+        assert!(!terminal
+            .wait_lease_revocations
+            .token_is_revoked(&"b".repeat(64), 1_000));
     }
 
     #[test]

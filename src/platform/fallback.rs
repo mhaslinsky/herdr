@@ -3,6 +3,17 @@ use std::process::Command;
 
 use super::{ClipboardImage, ForegroundJob, Signal};
 
+pub(crate) fn continuous_clock_ms() -> std::io::Result<u64> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "a suspend-aware continuous clock is unavailable on this platform",
+    ))
+}
+
+pub(crate) fn write_private_file(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    std::fs::write(path, bytes)
+}
+
 /// Unsupported platform stub.
 pub fn raise_server_nofile_limit() {}
 

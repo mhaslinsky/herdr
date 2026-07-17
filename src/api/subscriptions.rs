@@ -651,6 +651,7 @@ mod tests {
         PaneInfo {
             pane_id: "pane_1".into(),
             terminal_id: "terminal_1".into(),
+            terminal_generation: 0,
             workspace_id: "workspace_1".into(),
             tab_id: "tab_1".into(),
             focused: true,
@@ -663,6 +664,7 @@ mod tests {
             terminal_title_stripped: None,
             display_agent: None,
             agent_status: AgentStatus::Unknown,
+            wait_lease: None,
             state_labels: HashMap::new(),
             tokens: HashMap::new(),
             agent_session: None,

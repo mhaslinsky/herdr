@@ -550,7 +550,7 @@ fn session_snapshot_request_and_response_round_trip() {
         result: ResponseResult::SessionSnapshot {
             snapshot: Box::new(SessionSnapshot {
                 version: "0.1.2".into(),
-                protocol: 16,
+                protocol: 17,
                 focused_workspace_id: None,
                 focused_tab_id: None,
                 focused_pane_id: None,
@@ -617,6 +617,7 @@ fn worktree_request_and_response_round_trip() {
             root_pane: PaneInfo {
                 pane_id: "w_1-1".into(),
                 terminal_id: "term_1".into(),
+                terminal_generation: 0,
                 workspace_id: "w_1".into(),
                 tab_id: "w_1:1".into(),
                 focused: true,
@@ -629,6 +630,7 @@ fn worktree_request_and_response_round_trip() {
                 terminal_title_stripped: None,
                 display_agent: None,
                 agent_status: AgentStatus::Unknown,
+                wait_lease: None,
                 state_labels: HashMap::new(),
                 tokens: HashMap::new(),
                 agent_session: None,
@@ -1030,6 +1032,7 @@ fn create_response_round_trips_with_root_pane() {
             root_pane: PaneInfo {
                 pane_id: "w_1-3".into(),
                 terminal_id: "term_example".into(),
+                terminal_generation: 0,
                 workspace_id: "w_1".into(),
                 tab_id: "w_1:2".into(),
                 focused: false,
@@ -1042,6 +1045,7 @@ fn create_response_round_trips_with_root_pane() {
                 terminal_title_stripped: None,
                 display_agent: None,
                 agent_status: AgentStatus::Unknown,
+                wait_lease: None,
                 state_labels: HashMap::new(),
                 tokens: HashMap::new(),
                 agent_session: None,

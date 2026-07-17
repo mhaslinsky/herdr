@@ -3836,6 +3836,12 @@ impl HeadlessServer {
 
         self.app.sync_headless_animation_timer(now);
 
+        if now >= self.app.next_wait_lease_poll {
+            changed |= self.app.sync_wait_lease_requests();
+            changed |= self.app.expire_wait_leases();
+            self.app.next_wait_lease_poll = now + crate::terminal::WAIT_LEASE_POLL_INTERVAL;
+        }
+
         // No resize polling needed — server has no terminal.
         // Client resize messages drive size changes instead.
 
@@ -5472,7 +5478,7 @@ next_tab = ""
                 false,
                 server.has_app_client()
             ),
-            None
+            Some(server.app.next_wait_lease_poll)
         );
     }
 
@@ -5508,7 +5514,7 @@ next_tab = ""
                 false,
                 server.has_app_client()
             ),
-            None
+            Some(server.app.next_wait_lease_poll)
         );
     }
 

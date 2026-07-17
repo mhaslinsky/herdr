@@ -1,3 +1,4 @@
+use std::os::unix::fs::OpenOptionsExt;
 use std::{
     collections::{HashSet, VecDeque},
     io::Write,
@@ -17,6 +18,32 @@ const WSL_MARKER_ENV_VARS: &[&str] = &["WSL_DISTRO_NAME", "WSL_INTEROP"];
 struct ProcGroupMember {
     pid: u32,
     comm: String,
+}
+
+pub(crate) fn continuous_clock_ms() -> std::io::Result<u64> {
+    let mut value = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    if unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, &mut value) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let seconds = u64::try_from(value.tv_sec)
+        .map_err(|_| std::io::Error::other("CLOCK_BOOTTIME returned a negative value"))?;
+    let nanoseconds = u64::try_from(value.tv_nsec)
+        .map_err(|_| std::io::Error::other("CLOCK_BOOTTIME returned a negative value"))?;
+    Ok(seconds
+        .saturating_mul(1_000)
+        .saturating_add(nanoseconds / 1_000_000))
+}
+
+pub(crate) fn write_private_file(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)?;
+    file.write_all(bytes)
 }
 
 pub fn raise_server_nofile_limit() {}

@@ -225,10 +225,10 @@ impl App {
             );
             return false;
         };
-        let Some(launch_env) = self
-            .find_pane(pane_id)
-            .and_then(|(ws_idx, _)| self.pane_launch_env(ws_idx, pane_id, Vec::new()))
-        else {
+        let Some((workspace_index, _)) = self.find_pane(pane_id) else {
+            return false;
+        };
+        let Some(launch_env) = self.pane_launch_env(workspace_index, pane_id, Vec::new()) else {
             return false;
         };
 
@@ -254,10 +254,17 @@ impl App {
                     err = %err,
                     "failed to start shell for deferred agent resume"
                 );
-                if let Some(terminal) = self.state.terminals.get_mut(&terminal_id) {
-                    terminal.clear_agent_runtime_identity_after_respawn();
+                let runtime_identity_cleared =
+                    if let Some(terminal) = self.state.terminals.get_mut(&terminal_id) {
+                        terminal.clear_agent_runtime_identity_after_respawn();
+                        true
+                    } else {
+                        false
+                    };
+                if runtime_identity_cleared {
+                    self.emit_pane_updated(workspace_index, pane_id);
                 }
-                return false;
+                return runtime_identity_cleared;
             }
         };
 
@@ -276,9 +283,15 @@ impl App {
         }
 
         self.terminal_runtimes.insert(terminal_id.clone(), runtime);
+        let mut runtime_identity_replaced = false;
         if let Some(terminal) = self.state.terminals.get_mut(&terminal_id) {
             terminal.pending_agent_resume_plan = None;
             terminal.respawn_shell_on_exit = false;
+            terminal.clear_wait_lease_runtime_identity();
+            runtime_identity_replaced = true;
+        }
+        if runtime_identity_replaced {
+            self.emit_pane_updated(workspace_index, pane_id);
         }
         true
     }

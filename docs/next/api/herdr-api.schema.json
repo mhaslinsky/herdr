@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "protocol": 16,
+  "protocol": 17,
   "schema_version": 1,
   "schemas": {
     "error_response": {
@@ -786,6 +786,11 @@
             "tab_id": {
               "type": "string"
             },
+            "terminal_generation": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
             "terminal_id": {
               "type": "string"
             },
@@ -817,6 +822,16 @@
               },
               "type": "object"
             },
+            "wait_lease": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/event/$defs/WaitLeaseInfo"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "workspace_id": {
               "type": "string"
             }
@@ -824,6 +839,7 @@
           "required": [
             "pane_id",
             "terminal_id",
+            "terminal_generation",
             "workspace_id",
             "tab_id",
             "focused",
@@ -1019,6 +1035,23 @@
             "focused",
             "pane_count",
             "agent_status"
+          ],
+          "type": "object"
+        },
+        "WaitLeaseInfo": {
+          "properties": {
+            "job_id": {
+              "type": "string"
+            },
+            "remaining_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "job_id",
+            "remaining_ms"
           ],
           "type": "object"
         },
@@ -6851,6 +6884,11 @@
             "tab_id": {
               "type": "string"
             },
+            "terminal_generation": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
             "terminal_id": {
               "type": "string"
             },
@@ -6882,6 +6920,16 @@
               },
               "type": "object"
             },
+            "wait_lease": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/success_response/$defs/WaitLeaseInfo"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "workspace_id": {
               "type": "string"
             }
@@ -6889,6 +6937,7 @@
           "required": [
             "pane_id",
             "terminal_id",
+            "terminal_generation",
             "workspace_id",
             "tab_id",
             "focused",
@@ -9164,6 +9213,23 @@
             "focused",
             "pane_count",
             "agent_status"
+          ],
+          "type": "object"
+        },
+        "WaitLeaseInfo": {
+          "properties": {
+            "job_id": {
+              "type": "string"
+            },
+            "remaining_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "job_id",
+            "remaining_ms"
           ],
           "type": "object"
         },

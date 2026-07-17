@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::io::Write;
 use std::os::fd::RawFd;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::ptr::NonNull;
@@ -15,6 +16,40 @@ use super::{
 const PROC_PGRP_ONLY: u32 = 2;
 const SERVER_NOFILE_LIMIT_TARGET: libc::rlim_t = 8192;
 const CF_STRING_ENCODING_UTF8: u32 = 0x0800_0100;
+
+#[repr(C)]
+struct MachTimebaseInfo {
+    numer: u32,
+    denom: u32,
+}
+
+extern "C" {
+    fn mach_continuous_time() -> u64;
+    fn mach_timebase_info(info: *mut MachTimebaseInfo) -> libc::c_int;
+}
+
+pub(crate) fn continuous_clock_ms() -> std::io::Result<u64> {
+    let mut timebase = MachTimebaseInfo { numer: 0, denom: 0 };
+    if unsafe { mach_timebase_info(&mut timebase) } != 0 || timebase.denom == 0 {
+        return Err(std::io::Error::other(
+            "mach_timebase_info could not initialize the continuous clock",
+        ));
+    }
+    let ticks = unsafe { mach_continuous_time() };
+    let nanoseconds =
+        u128::from(ticks).saturating_mul(u128::from(timebase.numer)) / u128::from(timebase.denom);
+    u64::try_from(nanoseconds / 1_000_000)
+        .map_err(|_| std::io::Error::other("continuous clock overflow"))
+}
+
+pub(crate) fn write_private_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)?;
+    file.write_all(bytes)
+}
 
 pub(crate) fn should_draw_host_cursor_by_default() -> bool {
     false

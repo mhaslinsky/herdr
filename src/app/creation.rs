@@ -396,6 +396,7 @@ impl App {
         Some(crate::api::schema::PaneInfo {
             pane_id: self.public_pane_id(ws_idx, pane_id)?,
             terminal_id: terminal.id.to_string(),
+            terminal_generation: terminal.runtime_generation,
             workspace_id: self.public_workspace_id(ws_idx),
             tab_id: self.public_tab_id(ws_idx, tab_idx)?,
             focused,
@@ -412,6 +413,13 @@ impl App {
             terminal_title_stripped: terminal.terminal_title_stripped(),
             display_agent: presentation.display_agent,
             agent_status: pane_agent_status(terminal.state, pane.seen),
+            wait_lease: crate::platform::continuous_clock_ms()
+                .ok()
+                .and_then(|now_ms| terminal.active_wait_lease_at(now_ms))
+                .map(|lease| crate::api::schema::WaitLeaseInfo {
+                    job_id: lease.job_id,
+                    remaining_ms: lease.remaining_ms,
+                }),
             state_labels: presentation.state_labels,
             tokens: terminal.metadata_tokens.values(),
             agent_session: terminal_agent_session_info(terminal),
