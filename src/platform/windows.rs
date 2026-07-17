@@ -26,6 +26,7 @@ use windows_sys::{
             JobObjects::IsProcessInJob,
             Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE},
             Ole::CF_UNICODETEXT,
+            SystemInformation::GetTickCount64,
             Threading::{
                 GetCurrentProcess, GetExitCodeProcess, OpenProcess, TerminateProcess,
                 CREATE_NO_WINDOW, DETACHED_PROCESS, PROCESS_BASIC_INFORMATION,
@@ -39,6 +40,14 @@ use windows_sys::{
 use super::{ClipboardImage, ForegroundJob, Signal};
 
 const STILL_ACTIVE: u32 = 259;
+
+pub(crate) fn continuous_clock_ms() -> std::io::Result<u64> {
+    Ok(unsafe { GetTickCount64() })
+}
+
+pub(crate) fn write_private_file(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    std::fs::write(path, bytes)
+}
 
 pub(crate) fn should_draw_host_cursor_by_default() -> bool {
     true

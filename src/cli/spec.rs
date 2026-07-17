@@ -467,6 +467,7 @@ fn pane_command() -> Command {
         .subcommand(report_agent_session_command())
         .subcommand(release_agent_command())
         .subcommand(report_metadata_command())
+        .subcommand(wait_lease_command())
 }
 
 fn report_agent_command() -> Command {
@@ -520,6 +521,25 @@ fn report_metadata_command() -> Command {
         .arg(repeatable_option("clear-token", "NAME"))
         .arg(option("seq", "N"))
         .arg(option("ttl-ms", "N"))
+}
+
+fn wait_lease_command() -> Command {
+    Command::new("wait-lease")
+        .about("Manage an expiring pane wait lease")
+        .subcommand(
+            Command::new("acquire")
+                .about("Acquire a wait lease for a pane")
+                .arg(Arg::new("pane_id").value_name("PANE_ID"))
+                .arg(required("id", "JOB_REF").long("id"))
+                .arg(required("ttl-ms", "N").long("ttl-ms")),
+        )
+        .subcommand(
+            Command::new("release")
+                .about("Release a wait lease using its owner token")
+                .arg(Arg::new("pane_id").value_name("PANE_ID"))
+                .arg(required("id", "JOB_REF").long("id"))
+                .arg(required("token", "TOKEN").long("token")),
+        )
 }
 
 fn wait_command() -> Command {

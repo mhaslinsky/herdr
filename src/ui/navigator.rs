@@ -424,12 +424,31 @@ fn pane_detail(
                     .cloned()
                     .unwrap_or_else(|| display_state(state, seen).to_string());
                 parts.push(status);
+                if let Some(lease) = crate::platform::continuous_clock_ms()
+                    .ok()
+                    .and_then(|now_ms| terminal.active_wait_lease_at(now_ms))
+                {
+                    parts.push(format!(
+                        "awaiting: {} · {} left",
+                        lease.job_id,
+                        wait_lease_remaining_label(lease.remaining_ms)
+                    ));
+                }
             } else {
                 parts.push("shell".to_string());
             }
         }
     }
     parts.join(" · ")
+}
+
+fn wait_lease_remaining_label(remaining_ms: u64) -> String {
+    let remaining_seconds = remaining_ms.saturating_add(999) / 1_000;
+    if remaining_seconds >= 60 {
+        format!("{}m", remaining_seconds.div_ceil(60))
+    } else {
+        format!("{remaining_seconds}s")
+    }
 }
 
 fn rowless_workspace_activity(

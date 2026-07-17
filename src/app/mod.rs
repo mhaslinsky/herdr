@@ -119,6 +119,7 @@ pub struct App {
     pub(crate) last_sidebar_divider_click: Option<Instant>,
     pub(crate) last_pane_click: Option<PaneClickState>,
     pub(crate) next_resize_poll: Instant,
+    pub(crate) next_wait_lease_poll: Instant,
     pub(crate) next_animation_tick: Option<Instant>,
     pub(crate) next_auto_update_check: Option<Instant>,
     pub(crate) next_agent_manifest_update_check: Option<Instant>,
@@ -725,6 +726,7 @@ impl App {
             last_sidebar_divider_click: None,
             last_pane_click: None,
             next_resize_poll: Instant::now() + RESIZE_POLL_INTERVAL,
+            next_wait_lease_poll: Instant::now(),
             next_animation_tick: None,
             next_auto_update_check: version_check_enabled
                 .then_some(Instant::now() + AUTO_UPDATE_CHECK_INTERVAL),
@@ -4295,6 +4297,7 @@ mod tests {
         let now = Instant::now();
         app.session_save_deadline = Some(now + Duration::from_secs(2));
         app.next_resize_poll = now + Duration::from_secs(5);
+        app.next_wait_lease_poll = now + Duration::from_secs(5);
         app.next_auto_update_check = Some(now + Duration::from_secs(6));
 
         assert_eq!(
@@ -4308,6 +4311,7 @@ mod tests {
         let mut app = test_app();
         let now = Instant::now();
         app.next_resize_poll = now + Duration::from_millis(100);
+        app.next_wait_lease_poll = now + Duration::from_secs(5);
         app.session_save_deadline = Some(now + Duration::from_secs(2));
         app.next_auto_update_check = Some(now + Duration::from_secs(6));
 
@@ -4318,10 +4322,11 @@ mod tests {
     }
 
     #[test]
-    fn headless_next_loop_deadline_returns_none_when_resize_poll_is_only_deadline() {
+    fn headless_next_loop_deadline_keeps_wait_lease_poll_when_resize_is_due() {
         let mut app = test_app();
         let now = Instant::now();
         app.next_resize_poll = now - Duration::from_millis(1);
+        app.next_wait_lease_poll = now + Duration::from_millis(250);
         app.config_diagnostic_deadline = None;
         app.toast_deadline = None;
         app.next_animation_tick = None;
@@ -4331,7 +4336,7 @@ mod tests {
 
         assert_eq!(
             app.next_headless_loop_deadline_with_git_refresh(now, false, true),
-            None
+            Some(app.next_wait_lease_poll)
         );
     }
 
@@ -4415,6 +4420,7 @@ mod tests {
         let mut app = test_app();
         let now = Instant::now();
         app.next_resize_poll = now + Duration::from_millis(300);
+        app.next_wait_lease_poll = now + Duration::from_millis(300);
         app.selection_autoscroll_deadline = Some(now + Duration::from_millis(5));
         app.next_animation_tick = Some(now + Duration::from_millis(100));
         app.session_save_deadline = Some(now + Duration::from_millis(200));

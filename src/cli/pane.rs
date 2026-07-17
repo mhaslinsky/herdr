@@ -37,6 +37,7 @@ pub(super) fn run_pane_command(args: &[String]) -> std::io::Result<i32> {
         "report-agent-session" => pane_report_agent_session(&args[1..]),
         "release-agent" => pane_release_agent(&args[1..]),
         "report-metadata" => pane_report_metadata(&args[1..]),
+        "wait-lease" => pane_wait_lease(&args[1..]),
         "run" => pane_run(&args[1..]),
         "help" | "--help" | "-h" => {
             print_pane_help();
@@ -1403,6 +1404,131 @@ fn pane_report_metadata(args: &[String]) -> std::io::Result<i32> {
     }))
 }
 
+fn pane_wait_lease(args: &[String]) -> std::io::Result<i32> {
+    let Some(action) = args.first().map(String::as_str) else {
+        eprintln!("usage: herdr pane wait-lease <acquire|release> [pane_id] --id JOB_REF [--ttl-ms N|--token TOKEN]");
+        return Ok(2);
+    };
+    let env_pane_id = std::env::var("HERDR_PANE_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    let (pane_id, mut index) = match args.get(1) {
+        Some(raw_pane_id) if !raw_pane_id.starts_with("--") => {
+            (Some(super::normalize_pane_id(raw_pane_id)), 2)
+        }
+        _ => (env_pane_id.map(|value| super::normalize_pane_id(&value)), 1),
+    };
+    let Some(pane_id) = pane_id else {
+        eprintln!("missing pane id (pass it explicitly or run inside a Herdr pane)");
+        return Ok(2);
+    };
+    let mut job_id = None;
+    let mut ttl_ms = None;
+    let mut token = None;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--id" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for --id");
+                    return Ok(2);
+                };
+                job_id = Some(value.clone());
+                index += 2;
+            }
+            "--ttl-ms" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for --ttl-ms");
+                    return Ok(2);
+                };
+                ttl_ms = Some(super::parse_u64_flag("--ttl-ms", value)?);
+                index += 2;
+            }
+            "--token" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for --token");
+                    return Ok(2);
+                };
+                token = Some(value.clone());
+                index += 2;
+            }
+            other => {
+                eprintln!("unknown option: {other}");
+                return Ok(2);
+            }
+        }
+    }
+    let Some(job_id) = job_id else {
+        eprintln!("missing required --id");
+        return Ok(2);
+    };
+    match action {
+        "acquire" => {
+            let Some(ttl_ms) = ttl_ms else {
+                eprintln!("usage: herdr pane wait-lease acquire [pane_id] --id JOB_REF --ttl-ms N");
+                return Ok(2);
+            };
+            if token.is_some() {
+                eprintln!("--token is only valid for release");
+                return Ok(2);
+            }
+            let terminal_id = wait_lease_terminal_id(&pane_id)?;
+            let result = crate::terminal::acquire_wait_lease(pane_id, terminal_id, job_id, ttl_ms)?;
+            print_wait_lease_result(result)
+        }
+        "release" => {
+            let Some(token) = token else {
+                eprintln!(
+                    "usage: herdr pane wait-lease release [pane_id] --id JOB_REF --token TOKEN"
+                );
+                return Ok(2);
+            };
+            if ttl_ms.is_some() {
+                eprintln!("--ttl-ms is only valid for acquire");
+                return Ok(2);
+            }
+            let terminal_id = wait_lease_terminal_id(&pane_id)?;
+            let result = crate::terminal::release_wait_lease(pane_id, terminal_id, job_id, token)?;
+            print_wait_lease_result(result)
+        }
+        _ => {
+            eprintln!("unknown wait-lease action: {action}");
+            Ok(2)
+        }
+    }
+}
+
+fn wait_lease_terminal_id(pane_id: &str) -> std::io::Result<String> {
+    let response = super::send_request(&Request {
+        id: "cli:pane:wait-lease:identity".into(),
+        method: Method::PaneGet(PaneTarget {
+            pane_id: pane_id.to_string(),
+        }),
+    })?;
+    if let Some(error) = response.get("error") {
+        return Err(std::io::Error::other(error.to_string()));
+    }
+    response["result"]["pane"]["terminal_id"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| std::io::Error::other("pane response did not include terminal identity"))
+}
+
+fn print_wait_lease_result(
+    result: crate::terminal::WaitLeaseResponseResult,
+) -> std::io::Result<i32> {
+    let serialized = serde_json::to_string(&result).map_err(std::io::Error::other)?;
+    if matches!(
+        result,
+        crate::terminal::WaitLeaseResponseResult::Error { .. }
+    ) {
+        eprintln!("{serialized}");
+        Ok(1)
+    } else {
+        println!("{serialized}");
+        Ok(0)
+    }
+}
+
 fn print_pane_help() {
     eprintln!("herdr pane commands:");
     eprintln!("  herdr pane list [--workspace <workspace_id>]");
@@ -1434,6 +1560,8 @@ fn print_pane_help() {
     eprintln!("  herdr pane report-agent-session <pane_id> --source ID --agent LABEL [--seq N] [--agent-session-id ID] [--agent-session-path PATH]");
     eprintln!("  herdr pane release-agent <pane_id> --source ID --agent LABEL [--seq N]");
     eprintln!("  herdr pane report-metadata <pane_id> --source ID [--agent LABEL] [--applies-to-source ID] [--title TEXT|--clear-title] [--display-agent TEXT|--clear-display-agent] [--state-label STATUS=TEXT] [--clear-state-labels] [--token NAME=VALUE] [--clear-token NAME] [--seq N] [--ttl-ms N]");
+    eprintln!("  herdr pane wait-lease acquire [pane_id] --id JOB_REF --ttl-ms N");
+    eprintln!("  herdr pane wait-lease release [pane_id] --id JOB_REF --token TOKEN");
     eprintln!("  herdr pane run <pane_id> <command>");
 }
 

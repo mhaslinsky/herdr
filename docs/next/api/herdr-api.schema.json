@@ -817,6 +817,16 @@
               },
               "type": "object"
             },
+            "wait_lease": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/event/$defs/WaitLeaseInfo"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "workspace_id": {
               "type": "string"
             }
@@ -1019,6 +1029,23 @@
             "focused",
             "pane_count",
             "agent_status"
+          ],
+          "type": "object"
+        },
+        "WaitLeaseInfo": {
+          "properties": {
+            "job_id": {
+              "type": "string"
+            },
+            "remaining_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "job_id",
+            "remaining_ms"
           ],
           "type": "object"
         },
@@ -6882,6 +6909,16 @@
               },
               "type": "object"
             },
+            "wait_lease": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/success_response/$defs/WaitLeaseInfo"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "workspace_id": {
               "type": "string"
             }
@@ -9164,6 +9201,23 @@
             "focused",
             "pane_count",
             "agent_status"
+          ],
+          "type": "object"
+        },
+        "WaitLeaseInfo": {
+          "properties": {
+            "job_id": {
+              "type": "string"
+            },
+            "remaining_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "job_id",
+            "remaining_ms"
           ],
           "type": "object"
         },

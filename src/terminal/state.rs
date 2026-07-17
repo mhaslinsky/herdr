@@ -101,6 +101,8 @@ pub struct TerminalState {
     pub respawn_shell_on_exit: bool,
     recent_agent_process_exit_at: Option<Instant>,
     pub pending_agent_resume_plan: Option<crate::agent_resume::AgentResumePlan>,
+    pub wait_lease: Option<crate::terminal::WaitLease>,
+    pub(crate) last_released_wait_lease_token: Option<String>,
 }
 
 impl TerminalState {
@@ -131,7 +133,15 @@ impl TerminalState {
             respawn_shell_on_exit: false,
             recent_agent_process_exit_at: None,
             pending_agent_resume_plan: None,
+            wait_lease: None,
+            last_released_wait_lease_token: None,
         }
+    }
+
+    pub fn active_wait_lease_at(&self, now_ms: u64) -> Option<crate::terminal::ActiveWaitLease> {
+        self.wait_lease
+            .as_ref()
+            .and_then(|lease| lease.active_at(now_ms))
     }
 
     pub(crate) fn terminal_title_stripped(&self) -> Option<String> {

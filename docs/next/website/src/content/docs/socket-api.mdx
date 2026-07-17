@@ -163,6 +163,12 @@ pane.
 
 Clients can treat `offset_from_bottom == 0` as at-bottom state.
 
+`PaneInfo.wait_lease` is present while a wait lease is active and contains its
+job id and remaining milliseconds. Acquire and release use the
+`herdr pane wait-lease` CLI's atomic-file transport rather than socket methods.
+Treat a lease only as evidence for suppressing a false stall alarm. It does not
+prove job health and must never authorize resource teardown or termination.
+
 ### Experimental pane graphics
 
 Pane graphics let a plugin place image data over a pane. They are available
@@ -187,7 +193,6 @@ closes; concurrent set, clear, or stream requests return `stream_conflict`.
 {"id":"graphics_stream","method":"pane.graphics.stream","params":{"pane_id":"w1:p1"}}
 {"format":"png","image_width":800,"image_height":600,"data_length":12345,"placement":{"viewport_col":0,"viewport_row":0,"grid_cols":80,"grid_rows":30}}
 ```
-
 `pane.layout` returns the tab layout snapshot with `workspace_id`, `tab_id`,
 `zoomed`, outer `area`, `focused_pane_id`, pane rects, and split rects/ratios.
 `pane.neighbor` and `pane.edges` include that same layout snapshot so clients
