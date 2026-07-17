@@ -1604,7 +1604,7 @@ mod tests {
         let session_a = test_session_path("pi-session-a.jsonl");
         let session_b = test_session_path("pi-session-b.jsonl");
         terminal.set_detected_state(Some(Agent::Pi), AgentState::Idle);
-        terminal.set_hook_authority_with_session_ref(
+        terminal.set_hook_authority_at(
             "herdr:pi".into(),
             "pi".into(),
             AgentState::Idle,
@@ -1903,6 +1903,7 @@ mod tests {
             None,
             crate::agent_resume::AgentSessionRef::path(session_path.clone()),
             Some(20),
+            now,
         );
 
         terminal.set_detected_state_with_screen_signals_at(
@@ -1914,13 +1915,14 @@ mod tests {
             true,
             now + Duration::from_millis(1),
         );
-        let late = terminal.set_hook_authority_with_session_ref(
+        let late = terminal.set_hook_authority_at(
             "herdr:pi".into(),
             "pi".into(),
             AgentState::Working,
             None,
             crate::agent_resume::AgentSessionRef::path(session_path),
             Some(21),
+            now + Duration::from_millis(2),
         );
 
         assert!(late.is_none());
