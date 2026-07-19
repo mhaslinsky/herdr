@@ -278,26 +278,12 @@ pub(super) fn read_ref_oid(common_dir: &Path, full_ref: &str) -> Option<String> 
 
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::path::Path;
 
     use super::*;
-    use crate::workspace::git::test_support::run_git;
-
-    fn temp_test_dir(name: &str) -> PathBuf {
-        let unique = format!(
-            "herdr-workspace-tests-{}-{}-{}",
-            name,
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        );
-        let path = std::env::temp_dir().join(unique);
-        std::fs::create_dir_all(&path).unwrap();
-        path
-    }
+    // Shared with status.rs so both get the same developer-config isolation; a local copy here
+    // silently missed it and let the git-ai daemon race teardown.
+    use crate::workspace::git::test_support::{run_git, temp_test_dir};
 
     #[test]
     fn git_branch_reads_head_from_standard_repo() {

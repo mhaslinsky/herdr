@@ -1,7 +1,25 @@
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Detach spawned `git` from developer and system configuration.
+///
+/// A global `trace2.eventTarget` (git-ai installs one) makes every git invocation notify a
+/// daemon that then writes into the repository asynchronously — `ai/` directories and
+/// fast-import objects appearing after the foreground command has already exited. That racing
+/// writer makes the tests' `remove_dir_all` teardown fail with `DirectoryNotEmpty`, and the
+/// same inherited config could equally change refstorage, gc, or default-branch behaviour
+/// underneath a fixture. Tests must depend only on the repositories they build themselves.
+///
+/// Process-wide rather than per-`Command` so it also covers the production code under test,
+/// which spawns its own git. Safe because nextest runs each test in its own process.
+fn isolate_git_from_developer_config() {
+    std::env::set_var("GIT_CONFIG_GLOBAL", "/dev/null");
+    std::env::set_var("GIT_CONFIG_NOSYSTEM", "1");
+    std::env::set_var("GIT_TERMINAL_PROMPT", "0");
+}
+
 pub(super) fn temp_test_dir(name: &str) -> PathBuf {
+    isolate_git_from_developer_config();
     let unique = format!(
         "herdr-workspace-tests-{}-{}-{}",
         name,
