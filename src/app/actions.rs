@@ -24,12 +24,16 @@ fn is_background_completion_transition(prev_state: AgentState, new_state: AgentS
 }
 
 fn is_completion_transition(change: &EffectiveStateChange) -> bool {
-    is_completion_transition_parts(
-        change.previous_state,
-        change.state,
-        change.previous_agent_label.as_deref(),
-        change.agent_label.as_deref(),
-    )
+    // Outstanding background work means reaching Idle is a pause, not a finish. Gating here covers
+    // every completion surface at once (toast, sound, and the `seen` flip that renders "done"),
+    // since they all route through this predicate.
+    !change.wait_active
+        && is_completion_transition_parts(
+            change.previous_state,
+            change.state,
+            change.previous_agent_label.as_deref(),
+            change.agent_label.as_deref(),
+        )
 }
 
 fn public_tab_id_for_index(ws: &crate::workspace::Workspace, tab_idx: usize) -> Option<String> {
@@ -177,13 +181,20 @@ pub fn notification_toast_for_pane_state_update(
         return None;
     }
 
-    notification_toast_for_state_change_with_agent_labels(
+    let kind = notification_toast_for_state_change_with_agent_labels(
         suppress_active_tab_notifications,
         update.previous_state,
         update.state,
         update.previous_agent_label.as_deref(),
         update.agent_label.as_deref(),
-    )
+    )?;
+
+    // Only the completion toast is suppressed. NeedsAttention must still fire: a pane blocked on
+    // the user is the one signal a wait lease must never mask.
+    if update.wait_active && matches!(kind, ToastKind::Finished) {
+        return None;
+    }
+    Some(kind)
 }
 
 fn toast_agent_label(agent_label: &str) -> &str {
@@ -242,6 +253,9 @@ pub struct PaneStateUpdate {
     pub state: AgentState,
     pub seen: bool,
     pub presentation: crate::terminal::EffectivePresentation,
+    /// Mirrors [`EffectiveStateChange::wait_active`]: outstanding background work at the time this
+    /// update was produced.
+    pub wait_active: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -947,6 +961,7 @@ impl AppState {
                     state: change.state,
                     seen,
                     presentation: change.presentation.clone(),
+                    wait_active: change.wait_active,
                 };
                 Some(update)
             })
@@ -2781,6 +2796,7 @@ impl AppState {
             state: change.state,
             seen,
             presentation: change.presentation.clone(),
+            wait_active: change.wait_active,
         };
         Some(update)
     }
@@ -4346,6 +4362,92 @@ mod tests {
             state.toast.as_ref().map(|toast| toast.kind),
             Some(ToastKind::Finished)
         ));
+    }
+
+    /// Sets a wait lease that never expires, standing in for "this pane has outstanding
+    /// background work".
+    fn hold_wait_lease(state: &mut AppState, terminal_id: &crate::terminal::TerminalId) {
+        state.terminals.get_mut(terminal_id).unwrap().wait_lease = Some(
+            crate::terminal::WaitLease::new("background".into(), "t".repeat(64), u64::MAX),
+        );
+    }
+
+    #[test]
+    fn wait_lease_suppresses_background_completion() {
+        let mut state = app_with_workspaces(&["active", "background"]);
+        state.toast_config.delivery = crate::config::ToastDelivery::Herdr;
+        state.active = Some(0);
+        let bg_pane_id = *state.workspaces[1].panes.keys().next().unwrap();
+        let bg_terminal_id = state.workspaces[1]
+            .panes
+            .get(&bg_pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        state.terminals.get_mut(&bg_terminal_id).unwrap().state = AgentState::Working;
+        hold_wait_lease(&mut state, &bg_terminal_id);
+
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id: bg_pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+
+        // Reaching Idle with work outstanding is a pause, not a finish: no "done" marker and no
+        // completion toast. Without the lease this is `state_changed_idle_in_background_marks_unseen`,
+        // which asserts the exact opposite.
+        let pane = state.workspaces[1].panes.get(&bg_pane_id).unwrap();
+        assert!(
+            pane.seen,
+            "pane must not be marked done while work is outstanding"
+        );
+        assert!(
+            !matches!(
+                state.toast.as_ref().map(|toast| toast.kind),
+                Some(ToastKind::Finished)
+            ),
+            "completion toast must be suppressed while work is outstanding"
+        );
+    }
+
+    #[test]
+    fn wait_lease_does_not_suppress_blocked_attention() {
+        let mut state = app_with_workspaces(&["active", "background"]);
+        state.toast_config.delivery = crate::config::ToastDelivery::Herdr;
+        state.active = Some(0);
+        let bg_pane_id = *state.workspaces[1].panes.keys().next().unwrap();
+        let bg_terminal_id = state.workspaces[1]
+            .panes
+            .get(&bg_pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        state.terminals.get_mut(&bg_terminal_id).unwrap().state = AgentState::Working;
+        hold_wait_lease(&mut state, &bg_terminal_id);
+
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id: bg_pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Blocked,
+            visible_blocker: true,
+            visible_working: false,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+
+        // A lease suppresses completion only. Masking a pane that is blocked on the user is the
+        // failure this whole design exists to avoid.
+        assert!(
+            matches!(
+                state.toast.as_ref().map(|toast| toast.kind),
+                Some(ToastKind::NeedsAttention)
+            ),
+            "blocked panes must still raise attention while a wait lease is held"
+        );
     }
 
     #[test]

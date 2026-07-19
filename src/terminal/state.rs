@@ -56,6 +56,11 @@ pub struct EffectiveStateChange {
     pub known_agent: Option<Agent>,
     pub state: AgentState,
     pub presentation: EffectivePresentation,
+    /// A wait lease was active when this change was computed, meaning the pane has outstanding
+    /// background work. Reaching `Idle` with this set is a pause, not a completion, so completion
+    /// notifications and the "done" marker are suppressed. Deliberately NOT part of state
+    /// arbitration: the lease never changes `state` itself, so it cannot mask `Blocked`.
+    pub wait_active: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1398,6 +1403,20 @@ impl TerminalState {
             return None;
         }
 
+        // Short-circuit on the cheap field: this runs on every state recompute for every pane,
+        // while a wait lease is rare, so reading the clock first would spend a syscall per
+        // recompute to answer "no lease" almost every time.
+        //
+        // An unreadable clock degrades to "no wait active", restoring the pre-suppression
+        // behavior: a spurious completion notification. That direction is deliberate — a missing
+        // suppression is noisy and self-correcting, whereas suppressing on a bad clock would
+        // silently withhold the notification the user is waiting for.
+        let wait_active = self.wait_lease.is_some()
+            && crate::platform::continuous_clock_ms()
+                .ok()
+                .and_then(|now_ms| self.active_wait_lease_at(now_ms))
+                .is_some();
+
         self.state = state;
         Some(EffectiveStateChange {
             previous_agent_label,
@@ -1408,6 +1427,7 @@ impl TerminalState {
             known_agent,
             state,
             presentation,
+            wait_active,
         })
     }
 }
