@@ -1,0 +1,28 @@
+src/terminal/state.rs
+  s_ad49e78710f1e1::t_f894fa85a69705 1406-1414,1425
+  s_ad49e78710f1e1::t_0e08f5419ec541 59-63
+src/app/actions.rs
+  s_ad49e78710f1e1::t_adc5a39806a7e6 2799
+  s_ad49e78710f1e1::t_42a234e8464dde 30-36
+  s_ad49e78710f1e1::t_fc81e5a78c7f8b 184,190-197,4373,4412,4448
+  s_ad49e78710f1e1::t_24eda8e91d3817 27-29
+  s_ad49e78710f1e1::t_b38e97eb075c8b 964
+  s_ad49e78710f1e1::t_34bb460128d286 256-258
+  s_ad49e78710f1e1::t_b2803327d9180d 4367-4372,4374-4411,4413-4447,4449-4452
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "4ad2dd68b4faa95d42d41510b5681d9116e890b0",
+  "prompts": {},
+  "sessions": {
+    "s_ad49e78710f1e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6abc2e9e-1d87-45aa-bf8e-d45bac7a82ff",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
