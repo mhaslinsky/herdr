@@ -1604,7 +1604,7 @@ mod tests {
         let session_a = test_session_path("pi-session-a.jsonl");
         let session_b = test_session_path("pi-session-b.jsonl");
         terminal.set_detected_state(Some(Agent::Pi), AgentState::Idle);
-        terminal.set_hook_authority_at(
+        terminal.set_hook_authority_with_session_ref(
             "herdr:pi".into(),
             "pi".into(),
             AgentState::Idle,
@@ -1809,7 +1809,7 @@ mod tests {
         let now = Instant::now();
         let mut terminal = test_terminal();
         terminal.set_detected_state(Some(Agent::Pi), AgentState::Working);
-        terminal.set_hook_authority_with_session_ref(
+        terminal.set_hook_authority_at(
             "herdr:pi".into(),
             "pi".into(),
             AgentState::Working,
