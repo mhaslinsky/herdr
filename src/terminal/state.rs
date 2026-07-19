@@ -1806,9 +1806,9 @@ mod tests {
 
     #[test]
     fn process_exit_clears_matching_full_lifecycle_hook_authority() {
-        let now = Instant::now();
         let mut terminal = test_terminal();
         terminal.set_detected_state(Some(Agent::Pi), AgentState::Working);
+        let now = Instant::now();
         terminal.set_hook_authority_at(
             "herdr:pi".into(),
             "pi".into(),
@@ -1852,9 +1852,9 @@ mod tests {
 
     #[test]
     fn late_full_lifecycle_hook_after_process_exit_does_not_reacquire_authority() {
-        let now = Instant::now();
         let mut terminal = test_terminal();
         terminal.set_detected_state(Some(Agent::Pi), AgentState::Working);
+        let now = Instant::now();
         terminal.set_hook_authority_at(
             "herdr:pi".into(),
             "pi".into(),
@@ -1892,10 +1892,10 @@ mod tests {
     #[test]
     fn late_full_lifecycle_hook_with_same_session_after_process_exit_does_not_reacquire_authority()
     {
-        let now = Instant::now();
         let mut terminal = test_terminal();
         let session_path = test_session_path("pi.jsonl");
         terminal.set_detected_state(Some(Agent::Pi), AgentState::Working);
+        let now = Instant::now();
         terminal.set_hook_authority_at(
             "herdr:pi".into(),
             "pi".into(),
@@ -2289,8 +2289,8 @@ mod tests {
         let mut terminal = test_terminal();
         let old_session = test_session_path("old-before-process-exit.jsonl");
         let new_session = test_session_path("new-after-process-exit.jsonl");
-        let now = Instant::now();
         terminal.set_detected_state(Some(Agent::Pi), AgentState::Idle);
+        let now = Instant::now();
         terminal.set_hook_authority_at(
             "herdr:pi".into(),
             "pi".into(),
@@ -2360,8 +2360,8 @@ mod tests {
     fn missing_session_after_process_exit_waits_for_fresh_process_evidence() {
         let mut terminal = test_terminal();
         let old_session = test_session_path("old-before-nosession-process-exit.jsonl");
-        let now = Instant::now();
         terminal.set_detected_state(Some(Agent::Pi), AgentState::Idle);
+        let now = Instant::now();
         terminal.set_hook_authority_at(
             "herdr:pi".into(),
             "pi".into(),
@@ -2433,8 +2433,8 @@ mod tests {
         let session_a = test_session_path("generation-a.jsonl");
         let session_b = test_session_path("generation-b.jsonl");
         let session_c = test_session_path("generation-c.jsonl");
-        let now = Instant::now();
         terminal.set_detected_state(Some(Agent::Pi), AgentState::Idle);
+        let now = Instant::now();
         terminal.set_hook_authority_at(
             "herdr:pi".into(),
             "pi".into(),
@@ -2696,9 +2696,9 @@ mod tests {
 
     #[test]
     fn omp_reacquires_full_lifecycle_hook_after_process_exit_with_fresh_process_and_session_ref() {
-        let now = Instant::now();
         let mut terminal = test_terminal();
         terminal.set_detected_state(Some(Agent::Omp), AgentState::Idle);
+        let now = Instant::now();
         terminal.set_hook_authority_at(
             "herdr:omp".into(),
             "omp".into(),
@@ -2886,9 +2886,9 @@ mod tests {
 
     #[test]
     fn fallback_idle_does_not_override_hook_working() {
-        let now = Instant::now();
         let mut terminal = test_terminal();
         terminal.set_detected_state(Some(Agent::Claude), AgentState::Working);
+        let now = Instant::now();
         terminal.set_hook_authority_at(
             "herdr:claude".into(),
             "claude".into(),
@@ -2915,9 +2915,9 @@ mod tests {
 
     #[test]
     fn fallback_idle_does_not_override_full_lifecycle_hook_working() {
-        let now = Instant::now();
         let mut terminal = test_terminal();
         terminal.set_detected_state(Some(Agent::OpenCode), AgentState::Working);
+        let now = Instant::now();
         terminal.set_hook_authority_at(
             "herdr:opencode".into(),
             "opencode".into(),
@@ -2943,9 +2943,9 @@ mod tests {
 
     #[test]
     fn visible_working_does_not_override_hook_idle_for_same_agent() {
-        let now = Instant::now();
         let mut terminal = test_terminal();
         terminal.set_detected_state(Some(Agent::Claude), AgentState::Idle);
+        let now = Instant::now();
         terminal.set_hook_authority_at(
             "herdr:claude".into(),
             "claude".into(),
@@ -2973,9 +2973,9 @@ mod tests {
 
     #[test]
     fn visible_working_does_not_override_full_lifecycle_hook_idle() {
-        let now = Instant::now();
         let mut terminal = test_terminal();
         terminal.set_detected_state(Some(Agent::Hermes), AgentState::Idle);
+        let now = Instant::now();
         terminal.set_hook_authority_at(
             "herdr:hermes".into(),
             "hermes".into(),
@@ -3003,9 +3003,9 @@ mod tests {
 
     #[test]
     fn detected_working_fallback_is_ignored_under_full_lifecycle_hook_authority() {
-        let now = Instant::now();
         let mut terminal = test_terminal();
         terminal.set_detected_state(Some(Agent::Kilo), AgentState::Idle);
+        let now = Instant::now();
         terminal.set_hook_authority_at(
             "herdr:kilo".into(),
             "kilo".into(),
@@ -3211,9 +3211,9 @@ mod tests {
 
     #[test]
     fn full_lifecycle_hook_authority_ignores_detected_agent_clear_without_process_exit() {
-        let now = Instant::now();
         let mut terminal = test_terminal();
         terminal.set_detected_state(Some(Agent::Pi), AgentState::Idle);
+        let now = Instant::now();
         terminal.set_hook_authority_at(
             "herdr:pi".into(),
             "pi".into(),
