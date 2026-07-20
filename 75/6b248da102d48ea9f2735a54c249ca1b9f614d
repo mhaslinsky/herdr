@@ -1,0 +1,184 @@
+docs/next/CHANGELOG.md
+  s_9d8e1236fad66f::t_bd76d310ede9af 6
+src/ui/status.rs
+  s_9d8e1236fad66f::t_b22f9860d5da22 286-297
+  s_9d8e1236fad66f::t_5e3dab6ed9aa60 196-204,217,221-223,233-236,246-254
+  s_9d8e1236fad66f::t_928ef6dbc2eaf7 285
+src/ui/sidebar/tokens.rs
+  s_9d8e1236fad66f::t_5d7a5355c743a0 174
+tests/support/mod.rs
+  s_9d8e1236fad66f::t_52d3dc66cb298c 18
+src/app/api.rs
+  s_9d8e1236fad66f::t_6c602fc475861d 1705,1715,1799,1809,2047,2114,2135
+src/app/mod.rs
+  s_9d8e1236fad66f::t_6c602fc475861d 4488,4513
+src/ui/sidebar.rs
+  s_9d8e1236fad66f::t_a81ba03793e185 845-851
+  s_9d8e1236fad66f::t_f81983556f8e0e 36
+  s_9d8e1236fad66f::t_1dbc74026eb0bd 560-564,566
+  s_9d8e1236fad66f::t_f7400b2aeae72a 1168
+  s_9d8e1236fad66f::t_0c11c4b0ca8707 1380
+  s_9d8e1236fad66f::t_c3a34de549d483 1404-1410
+  s_9d8e1236fad66f::t_5fbff2c7371ab2 1209-1214,1216-1221
+  s_9d8e1236fad66f::t_c0f80030347fc2 155
+  s_9d8e1236fad66f::t_dc40db97d4615f 1234
+  s_9d8e1236fad66f::t_0da912a50e92f9 787-788
+  s_9d8e1236fad66f::t_0c974c1568a80e 195,211
+  s_9d8e1236fad66f::t_a71e89291a68ce 176-183
+  s_9d8e1236fad66f::t_691e24a7cec617 265-271
+src/detect/mod.rs
+  s_9d8e1236fad66f::t_be30f7819e8e33 39-44
+  s_9d8e1236fad66f::t_023678ba8e326b 223
+src/persist/restore.rs
+  s_9d8e1236fad66f::t_f338305d2341ad 544
+  s_9d8e1236fad66f::t_572abe87a5562b 638
+src/server/headless.rs
+  s_9d8e1236fad66f::t_6c602fc475861d 9149,9239
+scripts/agent_detection_manifest_check.py
+  s_9d8e1236fad66f::t_c5343f1e0d8da2 167-170
+  s_9d8e1236fad66f::t_ade75fda7c520f 57-61,63-67,69
+  s_9d8e1236fad66f::t_69cabf9b7326d9 28
+scripts/test_agent_detection_manifest_check.py
+  s_9d8e1236fad66f::t_5a93371358be0f 80-81,89,91
+src/app/creation.rs
+  s_9d8e1236fad66f::t_e9e3ba2fc53cdd 423
+src/events.rs
+  s_9d8e1236fad66f::t_56b4e56129c99a 66
+tests/api_ping.rs
+  s_9d8e1236fad66f::t_ed8a97126161ca 307
+src/app/actions.rs
+  s_9d8e1236fad66f::t_09a0b38a695ce1 3800
+  s_9d8e1236fad66f::t_2ec32946e5918f 30
+  s_9d8e1236fad66f::t_afdb7864a49e61 2600,2611
+  s_9d8e1236fad66f::t_70a055907cce1c 2826
+  s_9d8e1236fad66f::t_ad7941195b86ce 259-260
+  s_9d8e1236fad66f::t_6315a0ce73286d 2805
+  s_9d8e1236fad66f::t_6c602fc475861d 4325,4364,4447,4490,4527,4550,4572,4582,4628,4653,4686,4698,4722,4748,4776,4832,4851,4882,4906,4933,4967,5066,5096,5123,5147,5169
+  s_9d8e1236fad66f::t_a42f5b31d85994 4386-4425
+  s_9d8e1236fad66f::t_47e591bf3ffd80 967
+  s_9d8e1236fad66f::t_e30b059113f090 194
+  s_9d8e1236fad66f::t_94908f1b5ce58f 4385
+src/api/schema/panes.rs
+  s_9d8e1236fad66f::t_550bf092bc5967 427-431
+src/workspace/aggregate.rs
+  s_9d8e1236fad66f::t_f18888f35b8359 113-116
+  s_9d8e1236fad66f::t_c20c11e747d086 117-123
+  s_9d8e1236fad66f::t_1d760bc7dabdf7 22
+  s_9d8e1236fad66f::t_06194accd81713 72
+src/api/schema/tests.rs
+  s_9d8e1236fad66f::t_e1f855a3dc00fc 553
+  s_9d8e1236fad66f::t_c15f27c652f63a 634,1050
+tests/cli_wrapper.rs
+  s_9d8e1236fad66f::t_ed8a97126161ca 1705,1738,1750,1760,1774,1779
+src/detect/manifests/grok.toml
+  s_9d8e1236fad66f::t_5879fb683309e4 2-4
+  s_9d8e1236fad66f::t_4e70661acd1dfa 80-82,86
+docs/next/api/herdr-api.schema.json
+  s_9d8e1236fad66f::t_d18f334404ca2d 3,735-738,6837-6840
+src/app/input/mouse.rs
+  s_9d8e1236fad66f::t_6c602fc475861d 2510
+docs/next/website/src/content/docs/socket-api.mdx
+  s_9d8e1236fad66f::t_19adc0e6d87248 176-183
+src/detect/manifest.rs
+  s_9d8e1236fad66f::t_17cec028bea518 109
+  s_9d8e1236fad66f::t_33e4f79659a99f 344,362
+  s_9d8e1236fad66f::t_9d4f6f28567e33 965-974
+  s_9d8e1236fad66f::t_cb44371f26287f 1342
+  s_9d8e1236fad66f::t_47ef4c5d344599 507
+  s_9d8e1236fad66f::t_aae33a96574248 378
+  s_9d8e1236fad66f::t_a5d783941782b2 419
+  s_9d8e1236fad66f::t_3e80526537046e 566
+  s_9d8e1236fad66f::t_0d7d7d9d69cc21 874
+  s_9d8e1236fad66f::t_8a67009ae3bec4 527
+  s_9d8e1236fad66f::t_6f1c9e25053d27 169-174
+  s_9d8e1236fad66f::t_5e37c2b940581b 845
+  s_9d8e1236fad66f::t_325d50aa56ba63 37
+  s_9d8e1236fad66f::t_5f0ea2ae19f51f 431,446,454-465,477
+src/detect/manifests/claude.toml
+  s_9d8e1236fad66f::t_eb0d46a5bfb333 71-73,75-76
+  s_9d8e1236fad66f::t_bdde4eb3e54acb 64-70,74
+  s_9d8e1236fad66f::t_a09a00c0ffb692 4
+  s_9d8e1236fad66f::t_e62494627b2767 2-3
+src/detect/manifest_update.rs
+  s_9d8e1236fad66f::t_3b82a200c51519 15
+src/app/api/agents.rs
+  s_9d8e1236fad66f::t_3c63550d88e4fb 145
+src/detect/manifest/tests.rs
+  s_9d8e1236fad66f::t_0054d8e1ceeed2 762-826
+src/ui/navigator.rs
+  s_9d8e1236fad66f::t_9b69e2e6f79c2d 494,496-497,499-501,504-515,519-523
+  s_9d8e1236fad66f::t_f18888f35b8359 180-186,238-243
+  s_9d8e1236fad66f::t_1d408e25a3dbb1 524-531
+  s_9d8e1236fad66f::t_929dcd25b7499c 433,436,438
+  s_9d8e1236fad66f::t_37be649823a805 495,498,502-503,516-518
+  s_9d8e1236fad66f::t_d6c38f93e89b8a 116,122
+  s_9d8e1236fad66f::t_625a0b8d601f02 179
+src/api/server.rs
+  s_9d8e1236fad66f::t_c15f27c652f63a 867
+src/pane.rs
+  s_9d8e1236fad66f::t_e9df6af878c1d8 624
+  s_9d8e1236fad66f::t_0cea243e797523 843,857,869,879
+  s_9d8e1236fad66f::t_c56a8a3c2102be 742
+  s_9d8e1236fad66f::t_c5df5293b4c7ca 2304,2318,2330,2340
+  s_9d8e1236fad66f::t_9a365bd42fab6c 4038
+  s_9d8e1236fad66f::t_2291ffe69234d1 2056
+  s_9d8e1236fad66f::t_0007b77573fbbc 2174
+  s_9d8e1236fad66f::t_4ebf7c9b62f687 4000
+  s_9d8e1236fad66f::t_82517554a8f8f9 213-215
+  s_9d8e1236fad66f::t_be306019a1cd32 209,228,242,250
+  s_9d8e1236fad66f::t_e90c745b3e2ae2 2017
+  s_9d8e1236fad66f::t_73cabe655897db 175,189
+  s_9d8e1236fad66f::t_42172c01d71ae3 595
+  s_9d8e1236fad66f::t_edc51c4e84a9f4 752,2184
+src/api/subscriptions.rs
+  s_9d8e1236fad66f::t_c15f27c652f63a 668
+src/protocol/wire.rs
+  s_9d8e1236fad66f::t_737799531358ac 16
+src/pane/agent_detection.rs
+  s_9d8e1236fad66f::t_2bad8181ca474b 361
+  s_9d8e1236fad66f::t_5f589a6608d195 544
+  s_9d8e1236fad66f::t_360d6b5957b807 251-253,260,267
+  s_9d8e1236fad66f::t_cd41fbb7aa4d87 523
+  s_9d8e1236fad66f::t_66e342f8284ee0 322
+  s_9d8e1236fad66f::t_5c8cdd5d039b99 293
+  s_9d8e1236fad66f::t_cbea0c528440a6 223
+  s_9d8e1236fad66f::t_fcaec74b775afc 152
+  s_9d8e1236fad66f::t_c622d7116e09eb 350
+  s_9d8e1236fad66f::t_bb8293767973c5 375
+  s_9d8e1236fad66f::t_d3a967f82665fc 234
+  s_9d8e1236fad66f::t_3bb2701287f161 21
+src/terminal/state.rs
+  s_9d8e1236fad66f::t_4aae71ed9b3021 93
+  s_9d8e1236fad66f::t_2d0b3c0fb3fbd1 159-164
+  s_9d8e1236fad66f::t_0c3bd67636849c 127
+  s_9d8e1236fad66f::t_6bf18c0f704993 64-66
+  s_9d8e1236fad66f::t_585623ef5bfac6 1456
+  s_9d8e1236fad66f::t_c77f3edea52e1e 1590,1876,1923,1965,2201,2235,2248,2258,2295,2308,2318,2367,2392,2402,2441,2466,2476,2518,2529,2539,2559,2570,2580,2630,2788,2811,2821,2983,3012,3042,3073,3104,3124,3160,3182,3316,3405,3425,3443,3471,4059,4335,4360,4424,4440
+  s_9d8e1236fad66f::t_e0ddf18a3aab3f 330
+  s_9d8e1236fad66f::t_44babe0f540caa 1490
+  s_9d8e1236fad66f::t_f6afc0c3e5ffc8 166-168,173-174
+  s_9d8e1236fad66f::t_f703eadf55bd14 243,263,277
+  s_9d8e1236fad66f::t_65a15eee1a2059 165,169-172
+src/ui/mobile.rs
+  s_9d8e1236fad66f::t_4e2d7c7deae133 517-523
+  s_9d8e1236fad66f::t_883a484efe31ad 735,738-740
+  s_9d8e1236fad66f::t_2c3f9effcd8158 586-587
+  s_9d8e1236fad66f::t_78998d93265454 1157
+  s_9d8e1236fad66f::t_eb13e3442d4b91 323,330
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "756b248da102d48ea9f2735a54c249ca1b9f614d",
+  "prompts": {},
+  "sessions": {
+    "s_9d8e1236fad66f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f05102a2-ccc2-4f0c-8c96-c12545c14ec3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
