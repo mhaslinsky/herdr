@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "protocol": 17,
+  "protocol": 18,
   "schema_version": 1,
   "schemas": {
     "error_response": {
@@ -731,6 +731,10 @@
             },
             "agent_status": {
               "$ref": "#/schemas/event/$defs/AgentStatus"
+            },
+            "background_work": {
+              "description": "Outstanding background work (an agent's background shell or an active wait lease) while the\nmain thread has returned to the prompt. Orthogonal to `agent_status`: a pane can be idle,\nworking, or blocked with this set. Clients render an idle pane with this as \"waiting\".",
+              "type": "boolean"
             },
             "cwd": {
               "type": [
@@ -6829,6 +6833,10 @@
             },
             "agent_status": {
               "$ref": "#/schemas/success_response/$defs/AgentStatus"
+            },
+            "background_work": {
+              "description": "Outstanding background work (an agent's background shell or an active wait lease) while the\nmain thread has returned to the prompt. Orthogonal to `agent_status`: a pane can be idle,\nworking, or blocked with this set. Clients render an idle pane with this as \"waiting\".",
+              "type": "boolean"
             },
             "cwd": {
               "type": [

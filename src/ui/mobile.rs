@@ -320,13 +320,14 @@ fn render_header_status(
     };
 
     let (state, seen) = ws.aggregate_state(&app.terminals);
+    let background_work = ws.aggregate_background_work(&app.terminals);
     let (dot, dot_style) = if matches!(state, AgentState::Working) {
         (
             super::spinner_frame(app.spinner_tick),
             Style::default().fg(p.yellow),
         )
     } else {
-        state_dot(state, seen, p)
+        state_dot(state, seen, background_work, p)
     };
     let tab_label = mobile_tab_status(ws);
     let row1 = Rect::new(area.x, area.y, area.width, 1);
@@ -513,7 +514,13 @@ fn render_mobile_switcher_content(
                 entry.ws_idx == ws_idx && entry.tab_idx == tab_idx && entry.pane_id == pane_id
             });
             let bg = mobile_item_bg(false, active, p);
-            let (icon, icon_style) = agent_icon(entry.state, entry.seen, app.spinner_tick, p);
+            let (icon, icon_style) = agent_icon(
+                entry.state,
+                entry.seen,
+                entry.background_work,
+                app.spinner_tick,
+                p,
+            );
             let title = Line::from(vec![
                 Span::styled("  ", Style::default().bg(bg)),
                 Span::styled(icon, icon_style.bg(bg)),
@@ -576,7 +583,8 @@ fn render_mobile_switcher_content(
         let selected = *ws_idx == app.selected;
         let bg = mobile_item_bg(selected, active, p);
         let (state, seen) = ws.aggregate_state(&app.terminals);
-        let (dot, dot_style) = state_dot(state, seen, p);
+        let background_work = ws.aggregate_background_work(&app.terminals);
+        let (dot, dot_style) = state_dot(state, seen, background_work, p);
 
         let mut title_spans = vec![Span::styled("  ", Style::default().bg(bg))];
         // Worktrees of the same space render as branches off their parent, so a
@@ -724,9 +732,12 @@ fn mobile_agent_detail(entry: &AgentPanelEntry) -> String {
         .get(super::sidebar::agent_panel_status_key(
             entry.state,
             entry.seen,
+            entry.background_work,
         ))
         .cloned()
-        .unwrap_or_else(|| super::status::state_label(entry.state, entry.seen).to_string());
+        .unwrap_or_else(|| {
+            super::status::state_label(entry.state, entry.seen, entry.background_work).to_string()
+        });
     parts.push(status);
     if let Some(agent_label) = entry.agent_label.as_deref() {
         parts.push(agent_label.to_string());
@@ -1143,6 +1154,7 @@ mod tests {
             agent: agent_label.and_then(crate::detect::parse_agent_label),
             state: AgentState::Idle,
             seen: true,
+            background_work: false,
             last_agent_state_change_seq: None,
             state_labels: std::collections::HashMap::new(),
             tokens: std::collections::HashMap::new(),

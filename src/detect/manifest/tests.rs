@@ -759,3 +759,68 @@ fn codex_osc_working_beats_weak_blocker_screen() {
         Some("osc_title_working")
     );
 }
+
+#[test]
+fn background_work_rule_requires_engine_4_when_min_engine_declared() {
+    // Guard must bite: a background_work rule under a declared engine below 4 is rejected.
+    let below = r#"
+id = "codex"
+version = "2026.01.01.1"
+min_engine_version = 3
+
+[[rules]]
+id = "bg"
+region = "bottom_non_empty_lines(2)"
+background_work = true
+line_regex = ["shell"]
+"#;
+    let err = parse_manifest(below).unwrap_err();
+    assert!(
+        err.contains("background_work"),
+        "expected background_work engine-gate error, got: {err}"
+    );
+
+    // The same manifest at engine 4 validates.
+    let ok = below.replace("min_engine_version = 3", "min_engine_version = 4");
+    assert!(
+        parse_manifest(&ok).is_ok(),
+        "background_work rule at engine 4 must validate"
+    );
+}
+
+#[test]
+fn background_work_rule_sets_flag_without_winning_state() {
+    with_manifest_dirs("background-work-orthogonal", || {
+        write_local_codex(&rules_manifest(
+            r#"
+[[rules]]
+id = "idle_prompt"
+state = "idle"
+priority = 10
+contains = ["prompt-ready"]
+
+[[rules]]
+id = "bg_signal"
+region = "whole_recent"
+background_work = true
+contains = ["bg-running"]
+"#,
+        ));
+
+        // Both rules match: state resolves to Idle (the stateless background rule does not compete
+        // in arbitration) and background_work is OR'd in from the background rule.
+        let both = explain(Agent::Codex, "prompt-ready\nbg-running");
+        assert_eq!(both.state, AgentState::Idle);
+        assert!(both.background_work, "background_work must be OR'd in");
+        assert_eq!(
+            both.matched_rule.as_ref().map(|rule| rule.id.as_str()),
+            Some("idle_prompt"),
+            "a stateless background_work rule must not win state arbitration"
+        );
+
+        // Without the background signal present, the flag is false (guard is not vacuous).
+        let idle_only = explain(Agent::Codex, "prompt-ready");
+        assert_eq!(idle_only.state, AgentState::Idle);
+        assert!(!idle_only.background_work);
+    });
+}

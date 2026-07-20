@@ -18,6 +18,7 @@ pub(super) struct DetectionPublishState {
     pub(super) visible_idle: bool,
     pub(super) visible_blocker: bool,
     pub(super) visible_working: bool,
+    pub(super) background_work: bool,
 }
 
 #[derive(Debug, Default)]
@@ -148,6 +149,7 @@ pub(super) fn should_publish_detection_update(
         || next.visible_idle != previous.visible_idle
         || next.visible_blocker != previous.visible_blocker
         || next.visible_working != previous.visible_working
+        || next.background_work != previous.background_work
         || agent_changed
         || process_exited
         || (stable_visible_signal_refresh_due && next.visible_blocker && previous.visible_blocker)
@@ -218,6 +220,7 @@ pub(super) enum DetectionPublishDecision {
         visible_idle: bool,
         visible_blocker: bool,
         visible_working: bool,
+        background_work: bool,
         process_exited: bool,
     },
 }
@@ -228,6 +231,7 @@ pub(super) struct ScreenDetectionPublishInput {
     pub(super) last_visible_idle: bool,
     pub(super) last_visible_blocker: bool,
     pub(super) last_visible_working: bool,
+    pub(super) last_background_work: bool,
     pub(super) last_visible_signal_refresh: Option<std::time::Instant>,
     pub(super) screen_detection: AgentDetection,
     pub(super) process_exited: bool,
@@ -244,18 +248,23 @@ pub(super) fn decide_screen_detection_publish(
     let visible_idle = detection.visible_idle && new_state == AgentState::Idle;
     let visible_blocker = detection.visible_blocker && new_state == AgentState::Blocked;
     let visible_working = detection.visible_working && new_state == AgentState::Working;
+    // Orthogonal to AgentState: a background shell can be running regardless of what the
+    // foreground agent is doing, so this is threaded raw, unlike the state-gated signals above.
+    let background_work = detection.background_work;
 
     let previous_publish = DetectionPublishState {
         state: input.current_state,
         visible_idle: input.last_visible_idle,
         visible_blocker: input.last_visible_blocker,
         visible_working: input.last_visible_working,
+        background_work: input.last_background_work,
     };
     let next_publish = DetectionPublishState {
         state: new_state,
         visible_idle,
         visible_blocker,
         visible_working,
+        background_work,
     };
     let stable_refresh_due = stable_visible_signal_refresh_due(
         previous_publish,
@@ -281,6 +290,7 @@ pub(super) fn decide_screen_detection_publish(
             visible_idle,
             visible_blocker,
             visible_working,
+            background_work,
             process_exited: input.process_exited,
         },
     }
@@ -309,6 +319,7 @@ pub(super) fn detection_update_for_publish_with_osc(
             visible_idle: true,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
         });
     }
 
@@ -336,6 +347,7 @@ mod tests {
             visible_idle: false,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
         }
     }
 
@@ -346,6 +358,7 @@ mod tests {
             visible_idle: state == AgentState::Idle,
             visible_blocker: false,
             visible_working: state == AgentState::Working,
+            background_work: false,
         }
     }
 
@@ -359,6 +372,7 @@ mod tests {
             last_visible_idle: false,
             last_visible_blocker: false,
             last_visible_working: false,
+            last_background_work: false,
             last_visible_signal_refresh: None,
             screen_detection,
             process_exited: false,
@@ -506,6 +520,7 @@ mod tests {
                 visible_idle: false,
                 visible_blocker: false,
                 visible_working: true,
+                background_work: false,
                 process_exited: false,
             }
         );
@@ -526,6 +541,7 @@ mod tests {
                 visible_idle: true,
                 visible_blocker: false,
                 visible_working: false,
+                background_work: false,
                 process_exited: false,
             }
         );

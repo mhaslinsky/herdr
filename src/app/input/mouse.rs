@@ -2507,6 +2507,7 @@ mod tests {
                 state: AgentState::Idle,
                 visible_blocker: false,
                 visible_working: false,
+                background_work: false,
                 process_exited: false,
                 observed_at: std::time::Instant::now(),
             });

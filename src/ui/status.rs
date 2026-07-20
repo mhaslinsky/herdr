@@ -193,7 +193,15 @@ pub(super) fn render_config_diagnostic(frame: &mut Frame, area: Rect, message: &
     }
 }
 
-pub(super) fn state_dot(state: AgentState, seen: bool, p: &Palette) -> (&'static str, Style) {
+pub(super) fn state_dot(
+    state: AgentState,
+    seen: bool,
+    background_work: bool,
+    p: &Palette,
+) -> (&'static str, Style) {
+    if background_work && state == AgentState::Idle {
+        return ("◐", Style::default().fg(p.blue));
+    }
     match (state, seen) {
         (AgentState::Blocked, _) => ("●", Style::default().fg(p.red)),
         (AgentState::Working, _) => ("●", Style::default().fg(p.yellow)),
@@ -206,9 +214,13 @@ pub(super) fn state_dot(state: AgentState, seen: bool, p: &Palette) -> (&'static
 pub(super) fn agent_icon(
     state: AgentState,
     seen: bool,
+    background_work: bool,
     tick: u32,
     p: &Palette,
 ) -> (&'static str, Style) {
+    if background_work && state == AgentState::Idle {
+        return ("◐", Style::default().fg(p.blue));
+    }
     match (state, seen) {
         (AgentState::Blocked, _) => ("◉", Style::default().fg(p.red)),
         (AgentState::Working, _) => (super::spinner_frame(tick), Style::default().fg(p.yellow)),
@@ -218,7 +230,10 @@ pub(super) fn agent_icon(
     }
 }
 
-pub(super) fn state_label(state: AgentState, seen: bool) -> &'static str {
+pub(super) fn state_label(state: AgentState, seen: bool, background_work: bool) -> &'static str {
+    if background_work && state == AgentState::Idle {
+        return "waiting";
+    }
     match (state, seen) {
         (AgentState::Blocked, _) => "blocked",
         (AgentState::Working, _) => "working",
@@ -228,7 +243,15 @@ pub(super) fn state_label(state: AgentState, seen: bool) -> &'static str {
     }
 }
 
-pub(super) fn state_label_color(state: AgentState, seen: bool, p: &Palette) -> Color {
+pub(super) fn state_label_color(
+    state: AgentState,
+    seen: bool,
+    background_work: bool,
+    p: &Palette,
+) -> Color {
+    if background_work && state == AgentState::Idle {
+        return p.blue;
+    }
     match (state, seen) {
         (AgentState::Blocked, _) => p.red,
         (AgentState::Working, _) => p.yellow,
@@ -257,6 +280,19 @@ mod tests {
         CopyFeedback {
             message: "copied to clipboard".to_string(),
         }
+    }
+
+    #[test]
+    fn idle_with_background_work_labels_waiting() {
+        // Waiting supersedes both "done" (idle + unseen) and "idle" (idle + seen).
+        assert_eq!(state_label(AgentState::Idle, false, true), "waiting");
+        assert_eq!(state_label(AgentState::Idle, true, true), "waiting");
+        // Orthogonal: background work never rewrites a non-idle state.
+        assert_eq!(state_label(AgentState::Working, false, true), "working");
+        assert_eq!(state_label(AgentState::Blocked, false, true), "blocked");
+        // Without background work, the ordinary mapping holds (guard is not vacuous).
+        assert_eq!(state_label(AgentState::Idle, false, false), "done");
+        assert_eq!(state_label(AgentState::Idle, true, false), "idle");
     }
 
     #[test]

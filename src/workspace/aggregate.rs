@@ -19,6 +19,7 @@ pub struct PaneDetail {
     pub agent: Option<Agent>,
     pub state: AgentState,
     pub seen: bool,
+    pub background_work: bool,
     pub last_agent_state_change_seq: Option<u64>,
     pub state_labels: HashMap<String, String>,
     pub tokens: HashMap<String, String>,
@@ -68,6 +69,7 @@ impl Tab {
                     agent: terminal.effective_known_agent(),
                     state: terminal.state,
                     seen: pane.seen,
+                    background_work: terminal.has_background_work(),
                     last_agent_state_change_seq: terminal.last_agent_state_change_seq,
                     state_labels: presentation.state_labels,
                     tokens: terminal.metadata_tokens.values(),
@@ -106,6 +108,17 @@ impl Workspace {
 
     pub fn has_working_pane(&self, terminals: &HashMap<TerminalId, TerminalState>) -> bool {
         self.tabs.iter().any(|tab| tab.has_working_pane(terminals))
+    }
+
+    pub fn aggregate_background_work(
+        &self,
+        terminals: &HashMap<TerminalId, TerminalState>,
+    ) -> bool {
+        self.tabs
+            .iter()
+            .flat_map(|tab| tab.panes.values())
+            .filter_map(|pane| terminals.get(&pane.attached_terminal_id))
+            .any(|terminal| terminal.has_background_work())
     }
 
     pub fn pane_details(&self, terminals: &HashMap<TerminalId, TerminalState>) -> Vec<PaneDetail> {

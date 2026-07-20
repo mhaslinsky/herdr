@@ -173,6 +173,14 @@ job id and remaining milliseconds. Acquire and release use the
 Treat a lease only as evidence for suppressing a false stall alarm. It does not
 prove job health and must never authorize resource teardown or termination.
 
+`PaneInfo.background_work` is `true` while the pane has outstanding background
+work — an agent's background shell detected on screen, or an active wait lease —
+even after the main thread has returned to the prompt. It is orthogonal to
+`agent_status`: a pane can be idle, working, or blocked with `background_work`
+set, and the field is omitted when `false`. A client should render an idle pane
+that has `background_work` as "waiting" (chattable, but not finished) rather than
+as done. It never changes `agent_status`, so it cannot mask a blocked pane.
+
 ### Experimental pane graphics
 
 Pane graphics let a plugin place image data over a pane. They are available

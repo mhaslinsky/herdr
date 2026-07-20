@@ -25,6 +25,7 @@ RULE_KEYS = {
     "visible_idle",
     "visible_blocker",
     "visible_working",
+    "background_work",
     "skip_state_update",
     "all",
     "any",
@@ -53,12 +54,19 @@ MAX_MATCHERS_PER_GATE = 32
 MAX_TOTAL_MATCHERS = 1024
 MAX_MATCHER_CHARS = 512
 
-# Keep engine-2 clients on the OSC-capable manifest until an engine-3 release
-# can consume top_non_empty_lines. Remove this entry when the website publishes
-# the bundled Grok manifest.
+# Keep already-released (pre-engine-4) clients on an engine-compatible website manifest until an
+# engine-4 release ships. The background_work rule field requires engine 4, so the bundled Claude
+# and Grok manifests can't be published to the website yet. Each entry is
+# (bundled_version, website_version, website_sha256). Remove an entry once an engine-4 release lets
+# the website publish that bundled manifest.
 STAGED_WEBSITE_MANIFESTS = {
+    "claude": (
+        "2026.07.20.2",
+        "2026.07.13.1",
+        "d7b3e653a6d84024d1cca5b35bfa8a1d59afd9ce6bbfe06275d38315f18c2dc8",
+    ),
     "grok": (
-        "2026.07.16.2",
+        "2026.07.20.1",
         "2026.07.16.1",
         "1f35b3271a96cf830c64bed78751619bfd8013c277c0d7c0f999b7a433895f28",
     ),
@@ -155,6 +163,10 @@ def validate_manifest(path: Path, engine_version: int) -> dict:
         if region.startswith("top_non_empty_lines(") and min_engine < 3:
             raise CheckError(
                 f"{path}: rule {rule['id']} region {region!r} requires min_engine_version 3"
+            )
+        if rule.get("background_work") and min_engine < 4:
+            raise CheckError(
+                f"{path}: rule {rule['id']} uses background_work which requires min_engine_version 4"
             )
 
     return manifest

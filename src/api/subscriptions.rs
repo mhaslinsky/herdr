@@ -665,6 +665,7 @@ mod tests {
             display_agent: None,
             agent_status: AgentStatus::Unknown,
             wait_lease: None,
+            background_work: false,
             state_labels: HashMap::new(),
             tokens: HashMap::new(),
             agent_session: None,

@@ -424,6 +424,11 @@ pub struct PaneInfo {
     pub agent_status: AgentStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wait_lease: Option<WaitLeaseInfo>,
+    /// Outstanding background work (an agent's background shell or an active wait lease) while the
+    /// main thread has returned to the prompt. Orthogonal to `agent_status`: a pane can be idle,
+    /// working, or blocked with this set. Clients render an idle pane with this as "waiting".
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub background_work: bool,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub state_labels: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]

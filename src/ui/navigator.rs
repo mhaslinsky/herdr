@@ -113,13 +113,13 @@ fn push_state_chip(
     label: &'static str,
     app: &AppState,
 ) {
-    let (icon, icon_style) = agent_icon(state, seen, tick, &app.palette);
+    let (icon, icon_style) = agent_icon(state, seen, false, tick, &app.palette);
     spans.push(Span::styled(icon, icon_style.add_modifier(Modifier::BOLD)));
     spans.push(Span::raw(" "));
     spans.push(Span::styled(
         label,
         Style::default()
-            .fg(state_label_color(state, seen, &app.palette))
+            .fg(state_label_color(state, seen, false, &app.palette))
             .add_modifier(Modifier::BOLD),
     ));
 }
@@ -176,7 +176,14 @@ fn render_row(app: &AppState, frame: &mut Frame, rect: Rect, row: &NavigatorRow,
     } else {
         Style::default().fg(p.subtext0).bg(p.panel_bg)
     };
-    let (status_icon, status_style) = agent_icon(row.status, row.seen, app.spinner_tick, p);
+    let row_background_work = row_background_work(app, &row.target);
+    let (status_icon, status_style) = agent_icon(
+        row.status,
+        row.seen,
+        row_background_work,
+        app.spinner_tick,
+        p,
+    );
     let status_style = if selected {
         base_style.add_modifier(Modifier::BOLD)
     } else {
@@ -228,7 +235,12 @@ fn render_row(app: &AppState, frame: &mut Frame, rect: Rect, row: &NavigatorRow,
             Style::default().fg(p.overlay0).bg(p.panel_bg)
         } else {
             Style::default()
-                .fg(state_label_color(row.status, row.seen, p))
+                .fg(state_label_color(
+                    row.status,
+                    row.seen,
+                    row_background_work,
+                    p,
+                ))
                 .bg(p.panel_bg)
         };
         frame.render_widget(
@@ -418,11 +430,12 @@ fn pane_detail(
                     .map(|pane| pane.seen)
                     .unwrap_or(true);
                 let state = row_state(app, ws_idx, tab_idx, pane_id);
+                let background_work = terminal.has_background_work();
                 let status = presentation
                     .state_labels
-                    .get(display_state(state, seen))
+                    .get(display_state(state, seen, background_work))
                     .cloned()
-                    .unwrap_or_else(|| display_state(state, seen).to_string());
+                    .unwrap_or_else(|| display_state(state, seen, background_work).to_string());
                 parts.push(status);
                 if let Some(lease) = crate::platform::continuous_clock_ms()
                     .ok()
@@ -478,7 +491,44 @@ fn row_state(
         .unwrap_or(crate::detect::AgentState::Unknown)
 }
 
-fn display_state(state: crate::detect::AgentState, seen: bool) -> &'static str {
+fn row_background_work(app: &AppState, target: &NavigatorTarget) -> bool {
+    match target {
+        NavigatorTarget::Workspace { ws_idx } => app
+            .workspaces
+            .get(*ws_idx)
+            .is_some_and(|ws| ws.aggregate_background_work(&app.terminals)),
+        NavigatorTarget::Tab { ws_idx, tab_idx } => app
+            .workspaces
+            .get(*ws_idx)
+            .and_then(|ws| ws.tabs.get(*tab_idx))
+            .is_some_and(|tab| {
+                tab.panes
+                    .values()
+                    .filter_map(|pane| app.terminals.get(&pane.attached_terminal_id))
+                    .any(|terminal| terminal.has_background_work())
+            }),
+        NavigatorTarget::Pane {
+            ws_idx,
+            tab_idx,
+            pane_id,
+        } => app
+            .workspaces
+            .get(*ws_idx)
+            .and_then(|ws| ws.tabs.get(*tab_idx))
+            .and_then(|tab| tab.terminal_id(*pane_id))
+            .and_then(|terminal_id| app.terminals.get(terminal_id))
+            .is_some_and(|terminal| terminal.has_background_work()),
+    }
+}
+
+fn display_state(
+    state: crate::detect::AgentState,
+    seen: bool,
+    background_work: bool,
+) -> &'static str {
+    if background_work && state == crate::detect::AgentState::Idle {
+        return "waiting";
+    }
     match (state, seen) {
         (crate::detect::AgentState::Blocked, _) => "blocked",
         (crate::detect::AgentState::Working, _) => "working",

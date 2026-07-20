@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- Panes with outstanding background work (an agent's background shell, such as Claude's `N shell` footer or Grok's background-task chip, or an active wait lease) now show a distinct "waiting" indicator instead of "working" or a premature "done" when the agent has returned to the prompt but work is still running. Exposed as the orthogonal `PaneInfo.background_work` field in the socket API.
 - Added `ui.sidebar_start_collapsed` to launch Herdr with the sidebar collapsed. (#1463)
 - Added macOS support for the `HERDR_AGENT=<agent>` foreground-process hint, allowing agents hidden behind host-visible wrappers such as `nono` to use the named agent's screen manifest. (#679)
 

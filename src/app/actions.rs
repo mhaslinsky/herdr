@@ -27,7 +27,7 @@ fn is_completion_transition(change: &EffectiveStateChange) -> bool {
     // Outstanding background work means reaching Idle is a pause, not a finish. Gating here covers
     // every completion surface at once (toast, sound, and the `seen` flip that renders "done"),
     // since they all route through this predicate.
-    !change.wait_active
+    !(change.wait_active || change.background_work)
         && is_completion_transition_parts(
             change.previous_state,
             change.state,
@@ -191,7 +191,7 @@ pub fn notification_toast_for_pane_state_update(
 
     // Only the completion toast is suppressed. NeedsAttention must still fire: a pane blocked on
     // the user is the one signal a wait lease must never mask.
-    if update.wait_active && matches!(kind, ToastKind::Finished) {
+    if (update.wait_active || update.background_work) && matches!(kind, ToastKind::Finished) {
         return None;
     }
     Some(kind)
@@ -256,6 +256,8 @@ pub struct PaneStateUpdate {
     /// Mirrors [`EffectiveStateChange::wait_active`]: outstanding background work at the time this
     /// update was produced.
     pub wait_active: bool,
+    /// Mirrors [`EffectiveStateChange::background_work`].
+    pub background_work: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -962,6 +964,7 @@ impl AppState {
                     seen,
                     presentation: change.presentation.clone(),
                     wait_active: change.wait_active,
+                    background_work: change.background_work,
                 };
                 Some(update)
             })
@@ -2594,6 +2597,7 @@ impl AppState {
                 state,
                 visible_blocker,
                 visible_working,
+                background_work,
                 process_exited,
                 observed_at,
             } => self
@@ -2604,6 +2608,7 @@ impl AppState {
                         visible_blocker,
                         false,
                         visible_working,
+                        background_work,
                         process_exited,
                         observed_at,
                     ))
@@ -2797,6 +2802,7 @@ impl AppState {
             seen,
             presentation: change.presentation.clone(),
             wait_active: change.wait_active,
+            background_work: change.background_work,
         };
         Some(update)
     }
@@ -2816,6 +2822,7 @@ impl AppState {
                 AgentState::Idle,
                 false,
                 true,
+                false,
                 false,
                 true,
                 observed_at,
@@ -3790,6 +3797,7 @@ mod tests {
                     false,
                     false,
                     false,
+                    false,
                     std::time::Instant::now(),
                 ))
             })
@@ -4314,6 +4322,7 @@ mod tests {
             state: AgentState::Working,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4352,6 +4361,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4369,6 +4379,47 @@ mod tests {
     fn hold_wait_lease(state: &mut AppState, terminal_id: &crate::terminal::TerminalId) {
         state.terminals.get_mut(terminal_id).unwrap().wait_lease = Some(
             crate::terminal::WaitLease::new("background".into(), "t".repeat(64), u64::MAX),
+        );
+    }
+
+    #[test]
+    fn detection_background_work_suppresses_background_completion() {
+        let mut state = app_with_workspaces(&["active", "background"]);
+        state.toast_config.delivery = crate::config::ToastDelivery::Herdr;
+        state.active = Some(0);
+        let bg_pane_id = *state.workspaces[1].panes.keys().next().unwrap();
+        let bg_terminal_id = state.workspaces[1]
+            .panes
+            .get(&bg_pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        state.terminals.get_mut(&bg_terminal_id).unwrap().state = AgentState::Working;
+
+        // No wait lease this time: suppression is driven purely by detection-sourced background
+        // work carried on the StateChanged event (the screen-detected shell chip path).
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id: bg_pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: true,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+
+        let pane = state.workspaces[1].panes.get(&bg_pane_id).unwrap();
+        assert!(
+            pane.seen,
+            "pane must not be marked done while detection reports outstanding background work"
+        );
+        assert!(
+            !matches!(
+                state.toast.as_ref().map(|toast| toast.kind),
+                Some(ToastKind::Finished)
+            ),
+            "completion toast must be suppressed by detection-sourced background work"
         );
     }
 
@@ -4393,6 +4444,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4435,6 +4487,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: true,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4471,6 +4524,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4493,6 +4547,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4514,6 +4569,7 @@ mod tests {
             state: AgentState::Unknown,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4523,6 +4579,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4568,6 +4625,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4592,6 +4650,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4624,6 +4683,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4635,6 +4695,7 @@ mod tests {
             state: AgentState::Working,
             visible_blocker: false,
             visible_working: true,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4658,6 +4719,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4683,6 +4745,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4710,6 +4773,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4765,6 +4829,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4783,6 +4848,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: true,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4813,6 +4879,7 @@ mod tests {
             state: AgentState::Working,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4836,6 +4903,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4862,6 +4930,7 @@ mod tests {
             state: AgentState::Working,
             visible_blocker: false,
             visible_working: true,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4895,6 +4964,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4993,6 +5063,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5022,6 +5093,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5048,6 +5120,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5071,6 +5144,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5092,6 +5166,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });

@@ -77,8 +77,8 @@ class AgentDetectionManifestCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             bundled, website = staged_grok_dirs(Path(tmp))
 
-            bundled_manifests = check.load_manifest_dir(bundled, engine_version=3)
-            check.validate_catalog(website, bundled_manifests, engine_version=3)
+            bundled_manifests = check.load_manifest_dir(bundled, engine_version=4)
+            check.validate_catalog(website, bundled_manifests, engine_version=4)
 
     def test_rejects_mutated_staged_website_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -86,9 +86,9 @@ class AgentDetectionManifestCheckTests(unittest.TestCase):
             with (website / "grok.toml").open("a") as manifest_file:
                 manifest_file.write("\n# unexpected mutation\n")
 
-            bundled_manifests = check.load_manifest_dir(bundled, engine_version=3)
+            bundled_manifests = check.load_manifest_dir(bundled, engine_version=4)
             with self.assertRaisesRegex(check.CheckError, "lower than bundled"):
-                check.validate_catalog(website, bundled_manifests, engine_version=3)
+                check.validate_catalog(website, bundled_manifests, engine_version=4)
 
     def test_rejects_unlisted_website_manifest_lag_for_new_engine(self):
         with tempfile.TemporaryDirectory() as tmp:

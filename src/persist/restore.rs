@@ -541,6 +541,7 @@ fn restore_tab(
                     false,
                     false,
                     false,
+                    false,
                     std::time::Instant::now(),
                 );
             }
@@ -630,6 +631,7 @@ fn restore_tab(
                     let _ = terminal.set_detected_state_with_screen_signals_at(
                         Some(agent),
                         AgentState::Idle,
+                        false,
                         false,
                         false,
                         false,

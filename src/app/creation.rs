@@ -420,6 +420,7 @@ impl App {
                     job_id: lease.job_id,
                     remaining_ms: lease.remaining_ms,
                 }),
+            background_work: terminal.has_background_work(),
             state_labels: presentation.state_labels,
             tokens: terminal.metadata_tokens.values(),
             agent_session: terminal_agent_session_info(terminal),

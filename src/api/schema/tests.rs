@@ -550,7 +550,7 @@ fn session_snapshot_request_and_response_round_trip() {
         result: ResponseResult::SessionSnapshot {
             snapshot: Box::new(SessionSnapshot {
                 version: "0.1.2".into(),
-                protocol: 17,
+                protocol: 18,
                 focused_workspace_id: None,
                 focused_tab_id: None,
                 focused_pane_id: None,
@@ -631,6 +631,7 @@ fn worktree_request_and_response_round_trip() {
                 display_agent: None,
                 agent_status: AgentStatus::Unknown,
                 wait_lease: None,
+                background_work: false,
                 state_labels: HashMap::new(),
                 tokens: HashMap::new(),
                 agent_session: None,
@@ -1046,6 +1047,7 @@ fn create_response_round_trips_with_root_pane() {
                 display_agent: None,
                 agent_status: AgentStatus::Unknown,
                 wait_lease: None,
+                background_work: false,
                 state_labels: HashMap::new(),
                 tokens: HashMap::new(),
                 agent_session: None,

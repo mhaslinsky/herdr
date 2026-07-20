@@ -1,7 +1,7 @@
 id = "claude"
-version = "2026.07.13.1"
-min_engine_version = 2
-updated_at = "2026-07-13T00:00:00Z"
+version = "2026.07.20.2"
+min_engine_version = 4
+updated_at = "2026-07-20T00:00:00Z"
 aliases = ["claude-code"]
 
 [[rules]]
@@ -60,6 +60,19 @@ priority = 980
 region = "whole_recent"
 visible_blocker = true
 contains = ["run a dynamic workflow?", "esc to cancel"]
+
+# A background shell keeps running after the main turn returns to the prompt box. This marks the
+# pane's orthogonal background-work dimension (rendered as "waiting", chattable) without touching
+# state: the pane stays Idle, so live_prompt_box still resolves state, but completion is suppressed
+# and the sidebar shows the waiting glyph instead of "done". Claude's persistent footer shows a
+# "· N shell ·" chip only while N >= 1 background shells run; it is absent at zero (footer reads
+# "· ← for agents"). Anchored to the last two non-empty lines so the transient recap line and agent
+# prose never match. No `state`: a background-work signal must not compete in state arbitration.
+[[rules]]
+id = "background_shell_working"
+region = "bottom_non_empty_lines(2)"
+background_work = true
+line_regex = ['·\s*[1-9][0-9]*\s+shells?\s*·']
 
 [[rules]]
 id = "live_prompt_box"
