@@ -487,6 +487,9 @@ fn restore_tab(
 
         let saved_label = saved_pane.and_then(|p| p.label.clone());
         let saved_agent_name = saved_pane.and_then(|p| p.agent_name.clone());
+        let saved_managed_agent = saved_pane
+            .and_then(|pane| pane.managed_agent_kind.as_deref())
+            .and_then(crate::detect::parse_canonical_agent_label);
         let saved_launch_argv = saved_pane.and_then(|p| p.launch_argv.clone());
         let saved_agent_session = saved_pane.and_then(|p| p.agent_session.as_ref());
         let saved_history =
@@ -498,6 +501,8 @@ fn restore_tab(
             };
             pane_restore_startup(saved_agent_session, saved_history, &mut agent_restore)
         };
+        let restored_agent_session =
+            restored_terminal_agent_session(saved_agent_session, startup.duplicate_agent_session);
         let initial_restore_agent = startup
             .restore_plan
             .as_ref()
@@ -530,8 +535,15 @@ fn restore_tab(
             if let Some(label) = saved_label {
                 terminal.set_manual_label(label);
             }
-            if let Some(agent_name) = saved_agent_name {
-                terminal.set_agent_name(agent_name);
+            if let Some(session) = restored_agent_session {
+                terminal.set_persisted_agent_session(session);
+            }
+            match (saved_agent_name, saved_managed_agent) {
+                (Some(agent_name), Some(agent)) => {
+                    terminal.restore_managed_agent(agent_name, agent)
+                }
+                (Some(_), None) => {}
+                (None, _) => {}
             }
             if let Some(agent) = initial_restore_agent {
                 let _ = terminal.set_detected_state_with_screen_signals_at(
@@ -544,12 +556,6 @@ fn restore_tab(
                     false,
                     std::time::Instant::now(),
                 );
-            }
-            if let Some(session) = restored_terminal_agent_session(
-                saved_agent_session,
-                startup.duplicate_agent_session,
-            ) {
-                terminal.set_persisted_agent_session(session);
             }
             panes.insert(*id, PaneState::new(terminal_id));
             terminals.push(terminal);
@@ -624,8 +630,17 @@ fn restore_tab(
                 if let Some(label) = saved_label {
                     terminal.set_manual_label(label);
                 }
-                if let Some(agent_name) = saved_agent_name {
-                    terminal.set_agent_name(agent_name);
+                if let Some(session) = restored_agent_session {
+                    terminal.set_persisted_agent_session(session);
+                }
+                match (saved_agent_name, saved_managed_agent) {
+                    (Some(agent_name), Some(agent)) if was_imported => {
+                        terminal.restore_managed_agent(agent_name, agent)
+                    }
+                    (Some(_), Some(_)) => {}
+                    (Some(agent_name), None) if was_imported => terminal.set_agent_name(agent_name),
+                    (Some(_), None) => {}
+                    (None, _) => {}
                 }
                 if let Some(agent) = initial_restore_agent {
                     let _ = terminal.set_detected_state_with_screen_signals_at(
@@ -638,12 +653,6 @@ fn restore_tab(
                         false,
                         std::time::Instant::now(),
                     );
-                }
-                if let Some(session) = restored_terminal_agent_session(
-                    saved_agent_session,
-                    startup.duplicate_agent_session,
-                ) {
-                    terminal.set_persisted_agent_session(session);
                 }
                 panes.insert(*id, PaneState::new(terminal_id.clone()));
                 terminal_runtimes.insert(terminal_id, runtime);
@@ -1173,8 +1182,9 @@ mod tests {
                         0,
                         super::super::snapshot::PaneSnapshot {
                             cwd,
-                            label: None,
-                            agent_name: None,
+                            label: Some("reviewer".into()),
+                            agent_name: Some("reviewer".into()),
+                            managed_agent_kind: Some("opencode".into()),
                             agent_session: Some(super::super::snapshot::PaneAgentSessionSnapshot {
                                 source: "herdr:opencode".into(),
                                 agent: "opencode".into(),
@@ -1220,6 +1230,8 @@ mod tests {
             !terminal.respawn_shell_on_exit,
             "agent sessions should not use native restore lifecycle when resume_agents_on_restore is disabled"
         );
+        assert_eq!(terminal.agent_name, None);
+        assert_eq!(terminal.manual_label.as_deref(), Some("reviewer"));
         let session = terminal
             .persisted_agent_session
             .as_ref()
@@ -1258,6 +1270,7 @@ mod tests {
                                 cwd: cwd.clone(),
                                 label: None,
                                 agent_name: None,
+                                managed_agent_kind: None,
                                 agent_session: None,
                                 launch_argv: None,
                             },
@@ -1268,6 +1281,7 @@ mod tests {
                                 cwd: cwd.clone(),
                                 label: None,
                                 agent_name: None,
+                                managed_agent_kind: None,
                                 agent_session: None,
                                 launch_argv: None,
                             },
@@ -1311,7 +1325,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_with_gapped_public_tab_numbers_keeps_agent_panel_tab_indices() {
+    async fn cold_restore_with_gapped_public_tab_numbers_drops_unmanaged_agent_name() {
         let cwd = std::env::current_dir().unwrap();
         let pane_snap = |id: &str| {
             (
@@ -1320,6 +1334,7 @@ mod tests {
                     cwd: cwd.clone(),
                     label: None,
                     agent_name: None,
+                    managed_agent_kind: None,
                     agent_session: None,
                     launch_argv: None,
                 },
@@ -1329,6 +1344,7 @@ mod tests {
             cwd: cwd.clone(),
             label: Some("planner".into()),
             agent_name: Some("planner".into()),
+            managed_agent_kind: None,
             agent_session: Some(super::super::snapshot::PaneAgentSessionSnapshot {
                 source: "herdr:codex".into(),
                 agent: "codex".into(),
@@ -1407,17 +1423,16 @@ mod tests {
         );
 
         let workspace = workspaces.first().expect("workspace should restore");
-        let agent_pane = workspace.tabs[3].root_pane;
-        let detail = workspace
-            .pane_details(&terminals)
-            .into_iter()
-            .find(|detail| detail.pane_id == agent_pane)
-            .expect("restored agent pane should be listed");
-
         assert_eq!(workspace.active_tab, 3);
         assert_eq!(workspace.tabs[3].number, 5);
-        assert_eq!(detail.tab_idx, 3);
-        assert_eq!(detail.agent_label, "planner");
+        let agent_pane = workspace.tabs[3].root_pane;
+        let terminal_id = &workspace.tabs[3].panes[&agent_pane].attached_terminal_id;
+        assert!(terminals[terminal_id].agent_name.is_none());
+        assert_eq!(terminals[terminal_id].managed_agent_kind(), None);
+        assert!(workspace
+            .pane_details(&terminals)
+            .into_iter()
+            .all(|detail| detail.pane_id != agent_pane));
     }
 
     #[test]
@@ -1480,6 +1495,7 @@ mod tests {
                             cwd,
                             label: None,
                             agent_name: None,
+                            managed_agent_kind: None,
                             agent_session: Some(super::super::snapshot::PaneAgentSessionSnapshot {
                                 source: "herdr:codex".into(),
                                 agent: "codex".into(),
@@ -1645,6 +1661,7 @@ mod tests {
                 cwd: cwd.clone(),
                 label: None,
                 agent_name: None,
+                managed_agent_kind: None,
                 agent_session: None,
                 launch_argv: None,
             },

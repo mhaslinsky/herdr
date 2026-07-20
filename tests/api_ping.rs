@@ -509,6 +509,21 @@ fn workspace_list_and_create_round_trip() {
     let recent_text = recent["result"]["read"]["text"].as_str().unwrap();
     assert!(recent_text.contains("beta") || recent_text.contains("gamma"));
 
+    for source in ["visible", "detection"] {
+        let limited = send_request(
+            &socket_path,
+            &format!(
+                r#"{{"id":"req_11_{source}","method":"pane.read","params":{{"pane_id":"{}","source":"{source}","lines":2}}}}"#,
+                pane_id
+            ),
+        );
+        let text = limited["result"]["read"]["text"].as_str().unwrap();
+        assert!(
+            text.lines().count() <= 2,
+            "{source} ignored its two-line limit: {text:?}"
+        );
+    }
+
     let waited = send_request(
         &socket_path,
         &format!(
@@ -1035,50 +1050,76 @@ fn new_terminal_cwd_follow_ignores_nonleader_group_member_cwd() {
 
 #[cfg(not(target_os = "macos"))]
 #[test]
-fn agent_start_creates_named_terminal_over_socket() {
+fn agent_start_targets_existing_pane_over_socket() {
+    use std::os::unix::fs::PermissionsExt;
+
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
     let runtime_dir = base.join("runtime");
     let socket_path = runtime_dir.join("herdr.sock");
+    let bin = base.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let fake_pi = bin.join("pi");
+    fs::write(&fake_pi, "#!/bin/sh\nHERDR_AGENT=pi exec /bin/sleep 20\n").unwrap();
+    fs::set_permissions(&fake_pi, fs::Permissions::from_mode(0o755)).unwrap();
 
-    let child = spawn_herdr(&config_home, &runtime_dir, &socket_path);
+    let child = spawn_herdr_with_path(&config_home, &runtime_dir, &socket_path, Some(&bin));
     wait_for_socket(&socket_path, Duration::from_secs(5));
-
-    let started = send_request(
+    let workspace = send_request(
         &socket_path,
-        &format!(
-            r#"{{"id":"agent_start","method":"agent.start","params":{{"name":"main","cwd":"{}","argv":["/bin/sh","-c","printf agent-start-ok; sleep 2"]}}}}"#,
-            base.display()
-        ),
+        &serde_json::json!({
+            "id": "agent_workspace",
+            "method": "workspace.create",
+            "params": { "cwd": base.display().to_string(), "focus": false }
+        })
+        .to_string(),
     );
-    assert_eq!(started["result"]["type"], "agent_started");
-    assert_eq!(started["result"]["agent"]["name"], "main");
-    assert_eq!(
-        started["result"]["agent"]["cwd"],
-        base.display().to_string()
-    );
-    assert_eq!(started["result"]["argv"][0], "/bin/sh");
-    let terminal_id = started["result"]["agent"]["terminal_id"]
+    let pane_id = workspace["result"]["root_pane"]["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let terminal_id = workspace["result"]["root_pane"]["terminal_id"]
         .as_str()
         .unwrap()
         .to_string();
 
-    let listed = send_request(
+    let started = send_request(
         &socket_path,
-        r#"{"id":"agent_start_list","method":"agent.list","params":{}}"#,
+        &serde_json::json!({
+            "id": "agent_start",
+            "method": "agent.start",
+            "params": {
+                "name": "main",
+                "kind": "pi",
+                "pane_id": pane_id,
+                "args": ["--no-session"],
+                "timeout_ms": 8_000
+            }
+        })
+        .to_string(),
     );
-    let agents = listed["result"]["agents"].as_array().unwrap();
-    assert_eq!(agents.len(), 1);
-    assert_eq!(agents[0]["terminal_id"], terminal_id);
-    assert_eq!(agents[0]["name"], "main");
+    assert_eq!(started["result"]["type"], "agent_started");
+    assert_eq!(started["result"]["agent"]["name"], "main");
+    assert_eq!(started["result"]["agent"]["pane_id"], pane_id);
+    assert_eq!(started["result"]["agent"]["terminal_id"], terminal_id);
+    assert_eq!(
+        started["result"]["argv"],
+        serde_json::json!(["pi", "--no-session"])
+    );
 
     let duplicate = send_request(
         &socket_path,
-        &format!(
-            r#"{{"id":"agent_start_duplicate","method":"agent.start","params":{{"name":"main","cwd":"{}","argv":["/bin/sh","-c","true"]}}}}"#,
-            base.display()
-        ),
+        &serde_json::json!({
+            "id": "agent_start_duplicate",
+            "method": "agent.start",
+            "params": {
+                "name": "main",
+                "kind": "pi",
+                "pane_id": pane_id
+            }
+        })
+        .to_string(),
     );
     assert_eq!(duplicate["error"]["code"], "agent_name_taken");
     assert!(duplicate["error"]["message"]
@@ -1150,29 +1191,32 @@ fn agent_methods_round_trip_over_socket() {
     assert_eq!(agents[0]["agent_status"], "working");
     assert_eq!(agents[0]["pane_id"], pane_id);
 
-    let fetched_by_detected_agent = send_request(
+    let fetched_by_pane = send_request(
         &socket_path,
-        r#"{"id":"agent_get_detected","method":"agent.get","params":{"target":"pi"}}"#,
+        &format!(
+            r#"{{"id":"agent_get_pane","method":"agent.get","params":{{"target":"{}"}}}}"#,
+            pane_id
+        ),
     );
     assert_eq!(
-        fetched_by_detected_agent["result"]["agent"]["terminal_id"],
+        fetched_by_pane["result"]["agent"]["terminal_id"],
         terminal_id
     );
 
     let renamed_first_agent = send_request(
         &socket_path,
-        r#"{"id":"agent_rename_first","method":"agent.rename","params":{"target":"pi","name":"worker"}}"#,
+        &format!(
+            r#"{{"id":"agent_rename_first","method":"agent.rename","params":{{"target":"{}","name":"worker"}}}}"#,
+            pane_id
+        ),
     );
     assert_eq!(renamed_first_agent["result"]["agent"]["name"], "worker");
 
-    let fetched_by_terminal = send_request(
+    let fetched_by_name = send_request(
         &socket_path,
-        &format!(
-            r#"{{"id":"agent_get_terminal","method":"agent.get","params":{{"target":"{}"}}}}"#,
-            terminal_id
-        ),
+        r#"{"id":"agent_get_name","method":"agent.get","params":{"target":"worker"}}"#,
     );
-    assert_eq!(fetched_by_terminal["result"]["agent"]["name"], "worker");
+    assert_eq!(fetched_by_name["result"]["agent"]["name"], "worker");
 
     let read = send_request(
         &socket_path,
@@ -1183,12 +1227,9 @@ fn agent_methods_round_trip_over_socket() {
 
     let sent = send_request(
         &socket_path,
-        &format!(
-            r#"{{"id":"agent_send","method":"agent.send","params":{{"target":"{}","text":"echo agent-send-ok\n"}}}}"#,
-            terminal_id
-        ),
+        r#"{"id":"agent_send_keys","method":"agent.send_keys","params":{"target":"worker","keys":["enter"]}}"#,
     );
-    assert_eq!(sent["result"]["type"], "ok");
+    assert_eq!(sent["error"]["code"], "agent_not_ready");
 
     let tab_created = send_request(
         &socket_path,
@@ -1218,7 +1259,7 @@ fn agent_methods_round_trip_over_socket() {
         &socket_path,
         &format!(
             r#"{{"id":"agent_second_rename","method":"agent.rename","params":{{"target":"{}","name":"reviewer"}}}}"#,
-            second_terminal_id
+            second_pane_id
         ),
     );
     assert_eq!(second_renamed["result"]["agent"]["name"], "reviewer");
@@ -1759,7 +1800,10 @@ fn pane_report_agent_updates_effective_state() {
 
     let agent = send_request(
         &socket_path,
-        r#"{"id":"req_hook_metadata_agent","method":"agent.get","params":{"target":"pi"}}"#,
+        &format!(
+            r#"{{"id":"req_hook_metadata_agent","method":"agent.get","params":{{"target":"{}"}}}}"#,
+            pane_id
+        ),
     );
     assert_eq!(agent["result"]["agent"]["agent"], "pi");
     assert_eq!(
