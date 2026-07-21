@@ -78,6 +78,17 @@ pub struct EffectiveStateChange {
     /// Composed background-work dimension: detection-sourced background work; OR'd with
     /// wait_active for completion gating.
     pub background_work: bool,
+    /// This change is the falling edge of an owed completion: a Working/Blocked->Idle
+    /// transition was previously suppressed because background work was outstanding
+    /// (`wait_active || background_work`), and that work has now cleared while the pane is
+    /// still `Idle`. `is_completion_transition` treats this the same as a live completion so
+    /// the seen flip, toast, and sound all fire once, on this change, for the completion the
+    /// user was owed.
+    pub deferred_completion: bool,
+    /// The composed `wait_active || background_work` value as of the previous recompute,
+    /// i.e. before this change. Lets API/event emission detect a background-work-only flip
+    /// (state/agent_label/presentation unchanged) that still needs a `pane.updated` event.
+    pub previous_background_active: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -136,6 +147,13 @@ pub struct TerminalState {
     pub pending_agent_resume_plan: Option<crate::agent_resume::AgentResumePlan>,
     pub wait_lease: Option<crate::terminal::WaitLease>,
     pub(crate) wait_lease_revocations: crate::terminal::WaitLeaseRevocations,
+    /// A Working/Blocked->Idle completion was suppressed because background work
+    /// (`wait_active || detection_background_work`) was outstanding at the time; the
+    /// completion is owed until that work clears. See `recompute_effective_state`.
+    completion_suppressed: bool,
+    /// The composed `wait_active || detection_background_work` value as of the last
+    /// recompute, for falling-edge detection in `recompute_effective_state`.
+    last_background_active: bool,
 }
 
 impl TerminalState {
@@ -172,6 +190,8 @@ impl TerminalState {
             pending_agent_resume_plan: None,
             wait_lease: None,
             wait_lease_revocations: crate::terminal::WaitLeaseRevocations::default(),
+            completion_suppressed: false,
+            last_background_active: false,
         }
     }
 
@@ -1377,6 +1397,8 @@ impl TerminalState {
                     .and_then(|now_ms| self.active_wait_lease_at(now_ms))
                     .is_some(),
             background_work: self.detection_background_work,
+            deferred_completion: false,
+            previous_background_active: self.last_background_active,
         }
     }
 
@@ -1577,6 +1599,9 @@ impl TerminalState {
         self.detected_agent = None;
         self.fallback_state = AgentState::Unknown;
         self.fallback_visible_blocker = false;
+        self.detection_background_work = false;
+        self.completion_suppressed = false;
+        self.last_background_active = false;
         self.fallback_observed_at = None;
         self.hook_authority = None;
         self.persisted_agent_session = None;
@@ -1677,13 +1702,6 @@ impl TerminalState {
         let presentation = self.effective_presentation_for_state_at(state, now);
         self.clear_expiry_pending_for_hidden_metadata();
 
-        if previous_agent_label == agent_label
-            && previous_state == state
-            && previous_presentation == presentation
-        {
-            return None;
-        }
-
         // Short-circuit on the cheap field: this runs on every state recompute for every pane,
         // while a wait lease is rare, so reading the clock first would spend a syscall per
         // recompute to answer "no lease" almost every time.
@@ -1697,6 +1715,44 @@ impl TerminalState {
                 .ok()
                 .and_then(|now_ms| self.active_wait_lease_at(now_ms))
                 .is_some();
+        let background_active = wait_active || self.detection_background_work;
+
+        // Dedup must also key on background-work: an Idle->Idle change where only background
+        // work flipped touches none of agent_label/state/presentation, but it can be the falling
+        // edge of an owed completion (see below) and API consumers need a `pane.updated` for it,
+        // so it cannot be swallowed here.
+        if previous_agent_label == agent_label
+            && previous_state == state
+            && previous_presentation == presentation
+            && self.last_background_active == background_active
+        {
+            return None;
+        }
+
+        let previous_background_active = self.last_background_active;
+
+        // Deferred-completion state machine. Reaching Idle while background work is
+        // outstanding is a pause, not a finish: the completion is suppressed but owed
+        // (`completion_suppressed`). The debt is paid on the falling edge — background work
+        // clearing while the pane is still Idle — via `deferred_completion`, which
+        // `is_completion_transition` treats as a completion so the seen flip, toast, and
+        // sound all fire once for it. Leaving Idle for any other state cancels the debt: a
+        // fresh Working/Blocked->Idle cycle will produce its own (non-deferred) completion.
+        let reaching_idle = state == AgentState::Idle
+            && matches!(previous_state, AgentState::Working | AgentState::Blocked);
+        let deferred_completion = if reaching_idle && background_active {
+            self.completion_suppressed = true;
+            false
+        } else if state == AgentState::Idle && !background_active && self.completion_suppressed {
+            self.completion_suppressed = false;
+            true
+        } else {
+            if state != AgentState::Idle {
+                self.completion_suppressed = false;
+            }
+            false
+        };
+        self.last_background_active = background_active;
 
         self.state = state;
         Some(EffectiveStateChange {
@@ -1710,7 +1766,30 @@ impl TerminalState {
             presentation,
             wait_active,
             background_work: self.detection_background_work,
+            deferred_completion,
+            previous_background_active,
         })
+    }
+
+    /// Recomputes effective state against `self`'s own current values as the "previous"
+    /// baseline. For callers that mutate background-work-adjacent state (wait lease
+    /// acquire/release/expiry) outside `set_detected_state_*`/`set_hook_authority_*`, where
+    /// there is no separately-captured previous snapshot to pass in.
+    pub(crate) fn recompute_effective_state_at(
+        &mut self,
+        now: Instant,
+    ) -> Option<EffectiveStateChange> {
+        let previous_agent_label = self.effective_agent_label().map(str::to_string);
+        let previous_known_agent = self.effective_known_agent();
+        let previous_state = self.state;
+        let previous_presentation = self.effective_presentation_for_state_at(previous_state, now);
+        self.recompute_effective_state(
+            previous_agent_label,
+            previous_known_agent,
+            previous_state,
+            previous_presentation,
+            now,
+        )
     }
 }
 
@@ -4885,6 +4964,38 @@ mod tests {
             .wait_lease_revocations
             .record("b".repeat(64), 60_000, true, 1_000);
 
+        // Leave a completion owed (Working->Idle with background work outstanding) so the
+        // respawn cleanup below is exercised against non-default `completion_suppressed` /
+        // `detection_background_work` state, not just the values a fresh terminal already has.
+        terminal.set_detected_state_with_screen_signals_at(
+            Some(Agent::Codex),
+            AgentState::Working,
+            false,
+            false,
+            false,
+            false,
+            false,
+            std::time::Instant::now(),
+        );
+        terminal.set_detected_state_with_screen_signals_at(
+            Some(Agent::Codex),
+            AgentState::Idle,
+            false,
+            false,
+            false,
+            true,
+            false,
+            std::time::Instant::now(),
+        );
+        assert!(
+            terminal.completion_suppressed,
+            "setup: completion must be owed"
+        );
+        assert!(
+            terminal.detection_background_work,
+            "setup: background work must be outstanding"
+        );
+
         terminal.clear_agent_runtime_identity_after_respawn();
 
         assert_eq!(terminal.state, AgentState::Unknown);
@@ -4900,6 +5011,15 @@ mod tests {
         assert!(!terminal
             .wait_lease_revocations
             .token_is_revoked(&"b".repeat(64), 1_000));
+        assert!(
+            !terminal.detection_background_work,
+            "respawn must clear outstanding background work"
+        );
+        assert!(
+            !terminal.completion_suppressed,
+            "respawn must clear an owed-but-unfired completion"
+        );
+        assert!(!terminal.last_background_active);
     }
 
     #[test]

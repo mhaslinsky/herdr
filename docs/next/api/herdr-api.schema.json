@@ -6024,6 +6024,10 @@
             "agent_status": {
               "$ref": "#/schemas/success_response/$defs/AgentStatus"
             },
+            "background_work": {
+              "description": "Outstanding background work (wait lease or detection-sourced), composed the same way\nas the pane's \"waiting\" (◐) render state. `agent_status` alone conflates this with\nplain `idle`/`done` — callers polling for settlement (e.g. `agent wait --until idle`)\nmust check this bit too, or they'll treat a pane doing background work as settled.",
+              "type": "boolean"
+            },
             "cwd": {
               "type": [
                 "string",

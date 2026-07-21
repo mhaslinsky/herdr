@@ -28,6 +28,14 @@ fn is_background_completion_transition(prev_state: AgentState, new_state: AgentS
 }
 
 fn is_completion_transition(change: &EffectiveStateChange) -> bool {
+    // The falling edge of an owed completion (background work cleared while the pane stayed
+    // Idle) is a completion even though `previous_state == state == Idle` here, so it can't go
+    // through `is_completion_transition_parts` below, which requires a Working/Blocked->Idle
+    // transition. `deferred_completion` is only ever set by the state machine in
+    // `recompute_effective_state` on exactly that edge.
+    if change.deferred_completion {
+        return true;
+    }
     // Outstanding background work means reaching Idle is a pause, not a finish. Gating here covers
     // every completion surface at once (toast, sound, and the `seen` flip that renders "done"),
     // since they all route through this predicate.
@@ -120,7 +128,10 @@ fn notification_sound_for_effective_state_change(
     suppress_active_tab_notifications: bool,
     change: &EffectiveStateChange,
 ) -> Option<crate::sound::Sound> {
-    if change.state == change.previous_state {
+    // A deferred completion is an Idle->Idle change (state didn't move, background work did),
+    // so it must bypass this state-equality guard the same way a live completion bypasses it
+    // by virtue of state having changed.
+    if change.state == change.previous_state && !change.deferred_completion {
         return None;
     }
 
@@ -166,7 +177,10 @@ fn notification_toast_for_effective_state_change(
     suppress_active_tab_notifications: bool,
     change: &EffectiveStateChange,
 ) -> Option<ToastKind> {
-    if suppress_active_tab_notifications || change.state == change.previous_state {
+    // See the matching comment in `notification_sound_for_effective_state_change`.
+    if suppress_active_tab_notifications
+        || (change.state == change.previous_state && !change.deferred_completion)
+    {
         return None;
     }
 
@@ -262,6 +276,8 @@ pub struct PaneStateUpdate {
     pub wait_active: bool,
     /// Mirrors [`EffectiveStateChange::background_work`].
     pub background_work: bool,
+    /// Mirrors [`EffectiveStateChange::previous_background_active`].
+    pub previous_background_active: bool,
     pub agent_name_changed: bool,
     pub agent_released: bool,
     pub agent_release_status: Option<crate::api::schema::AgentStatus>,
@@ -1063,6 +1079,7 @@ impl AppState {
                     presentation: change.presentation.clone(),
                     wait_active: change.wait_active,
                     background_work: change.background_work,
+                    previous_background_active: change.previous_background_active,
                     agent_name_changed: false,
                     agent_released: false,
                     agent_release_status: None,
@@ -2917,11 +2934,62 @@ impl AppState {
             presentation: change.presentation.clone(),
             wait_active: change.wait_active,
             background_work: change.background_work,
+            previous_background_active: change.previous_background_active,
             agent_name_changed,
             agent_released,
             agent_release_status: agent_released.then(|| pane_agent_status(change.state, seen)),
         };
         Some(update)
+    }
+
+    /// Mirrors `update_terminal_state`'s tail (recompute -> bump the seq only on a real state
+    /// change -> apply -> report) for callers that mutate background-work-adjacent terminal state
+    /// directly (wait lease release/expiry) instead of going through
+    /// `set_detected_state_*`/`set_hook_authority_*`.
+    /// Needed so releasing or expiring a wait lease while the pane is Idle can fire a
+    /// previously-suppressed ("deferred") completion instead of only bumping `revision`.
+    pub(crate) fn recompute_and_apply_effective_state(
+        &mut self,
+        ws_idx: usize,
+        pane_id: PaneId,
+        now: Instant,
+    ) -> Option<PaneStateUpdate> {
+        let terminal_id = self.workspaces[ws_idx]
+            .pane_state(pane_id)?
+            .attached_terminal_id
+            .clone();
+        let previous_seen = self.workspaces[ws_idx].pane_state(pane_id)?.seen;
+        let change = self
+            .terminals
+            .get_mut(&terminal_id)?
+            .recompute_effective_state_at(now)?;
+        if change.previous_state != change.state {
+            self.next_agent_state_change_seq += 1;
+            if let Some(terminal) = self.terminals.get_mut(&terminal_id) {
+                terminal.last_agent_state_change_seq = Some(self.next_agent_state_change_seq);
+            }
+        }
+        let seen = self.apply_pane_state_change(ws_idx, pane_id, &change)?;
+        Some(PaneStateUpdate {
+            pane_id,
+            ws_idx,
+            previous_agent_label: change.previous_agent_label.clone(),
+            previous_known_agent: change.previous_known_agent,
+            previous_state: change.previous_state,
+            previous_seen,
+            previous_presentation: change.previous_presentation.clone(),
+            agent_label: change.agent_label.clone(),
+            known_agent: change.known_agent,
+            state: change.state,
+            seen,
+            presentation: change.presentation.clone(),
+            wait_active: change.wait_active,
+            background_work: change.background_work,
+            previous_background_active: change.previous_background_active,
+            agent_name_changed: false,
+            agent_released: false,
+            agent_release_status: None,
+        })
     }
 
     pub(crate) fn next_managed_agent_deadline(&self) -> Option<Instant> {
@@ -4697,6 +4765,121 @@ mod tests {
                 Some(ToastKind::Finished)
             ),
             "completion toast must be suppressed while work is outstanding"
+        );
+    }
+
+    #[test]
+    fn detection_background_work_releases_completion_when_shell_ends() {
+        let mut state = app_with_workspaces(&["active", "background"]);
+        state.toast_config.delivery = crate::config::ToastDelivery::Herdr;
+        state.active = Some(0);
+        let bg_pane_id = *state.workspaces[1].panes.keys().next().unwrap();
+        let bg_terminal_id = state.workspaces[1]
+            .panes
+            .get(&bg_pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        state.terminals.get_mut(&bg_terminal_id).unwrap().state = AgentState::Working;
+
+        // Reaching Idle with background work outstanding: the completion is owed, not fired.
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id: bg_pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: true,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+        let pane = state.workspaces[1].panes.get(&bg_pane_id).unwrap();
+        assert!(
+            pane.seen,
+            "pane must not be marked done while background work is outstanding"
+        );
+        assert!(
+            !matches!(
+                state.toast.as_ref().map(|toast| toast.kind),
+                Some(ToastKind::Finished)
+            ),
+            "completion toast must be suppressed while background work is outstanding"
+        );
+
+        // The background shell ends while the pane is already Idle: this is an Idle->Idle
+        // transition (no agent_label/state/presentation change), so it must not be silently
+        // dropped as a no-op — the owed completion has to fire now.
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id: bg_pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: false,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+        let pane = state.workspaces[1].panes.get(&bg_pane_id).unwrap();
+        assert!(
+            !pane.seen,
+            "the owed completion must fire once background work clears, marking the pane done"
+        );
+        assert!(
+            matches!(
+                state.toast.as_ref().map(|toast| toast.kind),
+                Some(ToastKind::Finished)
+            ),
+            "the owed completion toast must fire once background work clears"
+        );
+    }
+
+    #[test]
+    fn wait_lease_release_fires_deferred_completion() {
+        let mut state = app_with_workspaces(&["active", "background"]);
+        state.toast_config.delivery = crate::config::ToastDelivery::Herdr;
+        state.active = Some(0);
+        let bg_pane_id = *state.workspaces[1].panes.keys().next().unwrap();
+        let bg_terminal_id = state.workspaces[1]
+            .panes
+            .get(&bg_pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        state.terminals.get_mut(&bg_terminal_id).unwrap().state = AgentState::Working;
+        hold_wait_lease(&mut state, &bg_terminal_id);
+
+        // Working->Idle while the lease is held: suppressed, owed.
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id: bg_pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: false,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+        let pane = state.workspaces[1].panes.get(&bg_pane_id).unwrap();
+        assert!(pane.seen, "must be suppressed while the lease is held");
+
+        // Release the lease directly (bypassing the wire protocol, which lives on `App` in
+        // runtime.rs) and drive the same recompute+apply path `apply_wait_lease_release` uses.
+        state.terminals.get_mut(&bg_terminal_id).unwrap().wait_lease = None;
+        state
+            .recompute_and_apply_effective_state(1, bg_pane_id, std::time::Instant::now())
+            .expect("lease release must produce a PaneStateUpdate for the deferred completion");
+
+        let pane = state.workspaces[1].panes.get(&bg_pane_id).unwrap();
+        assert!(
+            !pane.seen,
+            "releasing the lease must fire the completion that was owed"
+        );
+        assert!(
+            matches!(
+                state.toast.as_ref().map(|toast| toast.kind),
+                Some(ToastKind::Finished)
+            ),
+            "releasing the lease must fire the owed completion toast"
         );
     }
 

@@ -541,6 +541,17 @@ fn agent_wait_matches(
     until: &[crate::api::schema::AgentStatus],
     after_state_change_seq: Option<u64>,
 ) -> bool {
+    // Idle/Done with outstanding background work is the "waiting" (◐) render state, not
+    // settled: a caller polling `--until idle` must not be told the agent settled while a
+    // background shell is still running and an owed completion hasn't fired yet.
+    if agent.background_work
+        && matches!(
+            agent.agent_status,
+            crate::api::schema::AgentStatus::Idle | crate::api::schema::AgentStatus::Done
+        )
+    {
+        return false;
+    }
     until.contains(&agent.agent_status)
         && after_state_change_seq.is_none_or(|baseline| agent.state_change_seq > baseline)
 }

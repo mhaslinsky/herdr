@@ -396,6 +396,16 @@ impl App {
             now_ms,
         );
         terminal.revision = terminal.revision.wrapping_add(1);
+        // Releasing the lease can drop background-work to false while the pane is already
+        // Idle — the falling edge of a completion that was suppressed while the lease was
+        // outstanding. Route through the same recompute+apply path as detection updates so
+        // that owed completion (seen flip, toast, sound) fires instead of being silently lost.
+        if let Some(update) =
+            self.state
+                .recompute_and_apply_effective_state(workspace_index, pane_id, Instant::now())
+        {
+            self.emit_pane_state_update(&update);
+        }
         self.emit_pane_updated(workspace_index, pane_id);
         (
             crate::terminal::WaitLeaseResponse::released(request_id, released),
@@ -429,6 +439,16 @@ impl App {
             if let Some(terminal) = self.state.terminals.get_mut(terminal_id) {
                 terminal.wait_lease = None;
                 terminal.revision = terminal.revision.wrapping_add(1);
+            }
+            // Same falling-edge concern as `apply_wait_lease_release`: expiry can drop
+            // background-work to false while the pane is already Idle, and an owed completion
+            // must fire for it rather than only bumping revision.
+            if let Some(update) = self.state.recompute_and_apply_effective_state(
+                *workspace_index,
+                *pane_id,
+                Instant::now(),
+            ) {
+                self.emit_pane_state_update(&update);
             }
             self.emit_pane_updated(*workspace_index, *pane_id);
         }
@@ -1230,6 +1250,103 @@ mod tests {
             .attached_terminal_id
             .to_string();
         (app, public_pane_id, terminal_id)
+    }
+
+    /// Like `wait_lease_test_app`, but with a second, non-active workspace holding the pane
+    /// under test. `apply_pane_state_change`'s active-tab quiet rule suppresses the seen flip
+    /// and toast for the active tab's own pane, which would mask the deferred-completion
+    /// assertions below; a background-workspace pane isn't subject to that suppression.
+    fn wait_lease_release_test_app() -> (super::super::App, String, String, crate::layout::PaneId) {
+        let mut app = super::super::App::new(
+            &crate::config::Config::default(),
+            true,
+            None,
+            tokio::sync::mpsc::unbounded_channel().1,
+            crate::api::EventHub::default(),
+        );
+        app.state.toast_config.delivery = crate::config::ToastDelivery::Herdr;
+        app.state.toast_config.delay_seconds = 0;
+        app.state.workspaces.push(Workspace::test_new("active"));
+        let bg_workspace = Workspace::test_new("background");
+        let bg_pane_id = bg_workspace.tabs[0].root_pane;
+        app.state.workspaces.push(bg_workspace);
+        app.state.ensure_test_terminals();
+        app.state.active = Some(0);
+        let public_pane_id = app.public_pane_id(1, bg_pane_id).unwrap();
+        let terminal_id = app.state.workspaces[1]
+            .pane_state(bg_pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .to_string();
+        (app, public_pane_id, terminal_id, bg_pane_id)
+    }
+
+    #[test]
+    fn wait_lease_release_fires_deferred_completion_through_wire_protocol() {
+        let (mut app, public_pane_id, terminal_id, pane_id) = wait_lease_release_test_app();
+        let attached_terminal_id = app.state.workspaces[1]
+            .pane_state(pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        app.state
+            .terminals
+            .get_mut(&attached_terminal_id)
+            .unwrap()
+            .state = crate::detect::AgentState::Working;
+        let now_ms = crate::platform::continuous_clock_ms().unwrap();
+        let token = "9".repeat(64);
+
+        let (_, changed) = app.apply_wait_lease_request(&acquire_request(
+            &public_pane_id,
+            &terminal_id,
+            &token,
+            now_ms,
+        ));
+        assert!(changed);
+
+        // Working->Idle while the lease is held: the completion is suppressed, not lost —
+        // owed until the lease clears.
+        app.state.handle_app_event(AppEvent::StateChanged {
+            pane_id,
+            agent: Some(crate::detect::Agent::Pi),
+            state: crate::detect::AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: false,
+            process_exited: false,
+            observed_at: Instant::now(),
+        });
+        assert!(
+            app.state.workspaces[1].panes.get(&pane_id).unwrap().seen,
+            "must be suppressed while the lease is held"
+        );
+
+        let (released, changed) = app.apply_wait_lease_request(&release_request(
+            &public_pane_id,
+            &terminal_id,
+            "background-review",
+            &token,
+        ));
+        assert!(changed);
+        assert!(matches!(
+            released.result,
+            crate::terminal::WaitLeaseResponseResult::Released { released: true }
+        ));
+
+        // This is the bug this fix closes: releasing the lease through the same request path
+        // agents use must fire the completion that was owed, not just clear the lease bit.
+        assert!(
+            !app.state.workspaces[1].panes.get(&pane_id).unwrap().seen,
+            "releasing the lease through the wire protocol must fire the owed completion"
+        );
+        assert!(
+            matches!(
+                app.state.toast.as_ref().map(|toast| toast.kind),
+                Some(crate::app::state::ToastKind::Finished)
+            ),
+            "releasing the lease through the wire protocol must fire the owed completion toast"
+        );
     }
 
     fn acquire_request(

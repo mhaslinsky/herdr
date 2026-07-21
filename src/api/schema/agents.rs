@@ -196,6 +196,12 @@ pub struct AgentInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_agent: Option<String>,
     pub agent_status: AgentStatus,
+    /// Outstanding background work (wait lease or detection-sourced), composed the same way
+    /// as the pane's "waiting" (◐) render state. `agent_status` alone conflates this with
+    /// plain `idle`/`done` — callers polling for settlement (e.g. `agent wait --until idle`)
+    /// must check this bit too, or they'll treat a pane doing background work as settled.
+    #[serde(default, skip_serializing_if = "super::is_false")]
+    pub background_work: bool,
     #[serde(default, skip_serializing_if = "super::is_false")]
     pub screen_detection_skipped: bool,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]

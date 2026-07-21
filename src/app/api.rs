@@ -563,7 +563,13 @@ impl App {
         };
         let workspace_id = self.public_workspace_id(update.ws_idx);
 
-        if update.agent_name_changed {
+        // A background-work-only flip (state/agent_label/presentation unchanged) never
+        // triggers the agent-status or agent-detected events below, but API/websocket
+        // subscribers watching `pane.updated` still need to observe it — the TUI's own render
+        // reads `TerminalState::has_background_work()` live and doesn't depend on this event.
+        let background_active_changed =
+            update.previous_background_active != (update.wait_active || update.background_work);
+        if update.agent_name_changed || background_active_changed {
             self.emit_pane_updated(update.ws_idx, update.pane_id);
         }
 
