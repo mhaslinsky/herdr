@@ -1,0 +1,55 @@
+src/terminal/state.rs
+  s_9d8e1236fad66f::t_d8eaf59d3ee264 1718-1719,1724-1726,1728-1732,1755,1769-1770,1773-1788
+  s_9d8e1236fad66f::t_20b540c50386ea 81-91
+  s_9d8e1236fad66f::t_761a395eb5e8f9 193-194
+  s_9d8e1236fad66f::t_c61571e3432587 150-156
+  s_9d8e1236fad66f::t_f24e4e23514437 1602-1604
+  s_9d8e1236fad66f::t_c25ad94022519c 1720-1723,1727,1733-1754
+  s_9d8e1236fad66f::t_f37e6df8a1ca8c 4967-4998,5014-5015
+  s_9d8e1236fad66f::t_b35bdf228bf1b4 1400-1401
+  s_9d8e1236fad66f::t_390653bc90fc20 1789-1793,5016-5022
+src/app/agents.rs
+  s_9d8e1236fad66f::t_70068a4ebc2a19 381
+src/api/schema/agents.rs
+  s_9d8e1236fad66f::t_e2189cf4d0bc7d 199-204
+src/api/wait.rs
+  s_9d8e1236fad66f::t_42451b082a5ffd 544-554
+src/app/api.rs
+  s_9d8e1236fad66f::t_43df7d35a5b323 566-572
+src/app/actions.rs
+  s_9d8e1236fad66f::t_c329b38432b9da 131-134
+  s_9d8e1236fad66f::t_88021064e163a2 4771-4867,4869,4871-4885
+  s_9d8e1236fad66f::t_380b7ac6bde57c 279-280
+  s_9d8e1236fad66f::t_ccca9cf4f9fe1a 1082
+  s_9d8e1236fad66f::t_87a927c95f11f6 4868,4870
+  s_9d8e1236fad66f::t_4715cb43a4d08b 2949-2994
+  s_9d8e1236fad66f::t_9f67f7bc3e7832 2937
+  s_9d8e1236fad66f::t_175e102104c150 2945-2948
+  s_9d8e1236fad66f::t_2479c2bd91fa11 180-183
+  s_9d8e1236fad66f::t_a1c95f651737c6 31-38
+src/app/runtime.rs
+  s_9d8e1236fad66f::t_1db2be6f1d6235 443-451
+  s_9d8e1236fad66f::t_eb447ecb30b525 399-408
+  s_9d8e1236fad66f::t_a56474d2555f61 1255-1351
+  s_9d8e1236fad66f::t_bd847690afd1a7 452
+docs/next/api/herdr-api.schema.json
+  s_9d8e1236fad66f::t_a0d77721a2577f 6027-6030
+tests/cli/sessions.rs
+  s_9d8e1236fad66f::t_837312c48ecf46 329,362,374,384,398,403
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "a7e7a9d0dbb9d3bdba3c650dbc47bf4180dc59c8",
+  "prompts": {},
+  "sessions": {
+    "s_9d8e1236fad66f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f05102a2-ccc2-4f0c-8c96-c12545c14ec3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
