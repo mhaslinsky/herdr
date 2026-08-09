@@ -458,9 +458,11 @@ fn wait_for_resolved_agent(
                     .map(Some);
             }
             if let Some(status) = matched_event_status {
-                let mut matched = current;
+                let mut matched = current.clone();
                 matched.agent_status = status;
-                return Ok(Some(AgentWaitOutcome::Matched(Box::new(matched))));
+                if agent_wait_matches(&matched, &wait.until, wait.after_state_change_seq) {
+                    return Ok(Some(AgentWaitOutcome::Matched(Box::new(matched))));
+                }
             }
             if agent_wait_matches(&current, &wait.until, wait.after_state_change_seq) {
                 return Ok(Some(AgentWaitOutcome::Matched(Box::new(current))));
@@ -543,6 +545,11 @@ fn agent_wait_matches(
     after_state_change_seq: Option<u64>,
 ) -> bool {
     until.contains(&agent.agent_status)
+        && !(agent.background_work
+            && matches!(
+                agent.agent_status,
+                crate::api::schema::AgentStatus::Idle | crate::api::schema::AgentStatus::Done
+            ))
         && after_state_change_seq.is_none_or(|baseline| agent.state_change_seq > baseline)
 }
 
@@ -782,6 +789,61 @@ fn wait_matched_response(request_id: &str, event: serde_json::Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn agent_info(
+        agent_status: crate::api::schema::AgentStatus,
+        background_work: bool,
+    ) -> crate::api::schema::AgentInfo {
+        crate::api::schema::AgentInfo {
+            terminal_id: "term_1".into(),
+            name: Some("worker".into()),
+            agent: Some("pi".into()),
+            title: None,
+            terminal_title: None,
+            terminal_title_stripped: None,
+            display_agent: None,
+            agent_status,
+            background_work,
+            screen_detection_skipped: false,
+            state_labels: std::collections::HashMap::new(),
+            tokens: std::collections::HashMap::new(),
+            agent_session: None,
+            workspace_id: "ws_1".into(),
+            tab_id: "tab_1".into(),
+            pane_id: "pane_1".into(),
+            focused: true,
+            launch_pending: false,
+            interactive_ready: true,
+            state_change_seq: 1,
+            cwd: None,
+            foreground_cwd: None,
+            revision: 1,
+        }
+    }
+
+    #[test]
+    fn background_work_blocks_idle_and_done_but_not_blocked_settlement() {
+        let defaults = agent_wait_statuses(Vec::new());
+        for status in [
+            crate::api::schema::AgentStatus::Idle,
+            crate::api::schema::AgentStatus::Done,
+        ] {
+            let waiting = agent_info(status, true);
+            assert!(!agent_wait_matches(&waiting, &defaults, None));
+            assert!(!agent_wait_matches(&waiting, &[status], None));
+            let cleared = agent_info(status, false);
+            assert!(agent_wait_matches(&cleared, &defaults, None));
+            assert!(agent_wait_matches(&cleared, &[status], None));
+        }
+
+        let blocked = agent_info(crate::api::schema::AgentStatus::Blocked, true);
+        assert!(agent_wait_matches(&blocked, &defaults, None));
+        assert!(agent_wait_matches(
+            &blocked,
+            &[crate::api::schema::AgentStatus::Blocked],
+            None,
+        ));
+    }
 
     #[test]
     fn agent_wait_probe_only_translates_agent_disappearance() {

@@ -1891,15 +1891,10 @@ impl HeadlessServer {
             self.active_tab_suppresses_notifications(is_active_tab);
 
         if self.app.state.sound.allows(update.known_agent) {
-            if let Some(sound) =
-                crate::app::actions::notification_sound_for_state_change_with_agent_labels(
-                    suppress_active_tab_notifications,
-                    update.previous_state,
-                    update.state,
-                    update.previous_agent_label.as_deref(),
-                    update.agent_label.as_deref(),
-                )
-            {
+            if let Some(sound) = crate::app::actions::notification_sound_for_pane_state_update(
+                suppress_active_tab_notifications,
+                update,
+            ) {
                 self.send_notify_to_foreground_client(
                     protocol::NotifyKind::Sound,
                     sound_notify_message(sound),
@@ -2150,93 +2145,13 @@ impl HeadlessServer {
                 });
                 true
             }
-            AppEvent::StateChanged { pane_id, agent, .. } => {
-                // Capture toast before handling.
-                let toast_before = self.app.state.toast.clone();
-                let pane_id_val = *pane_id;
-                let agent_val = *agent;
-
-                // Find the previous effective state of this pane before the event
-                // is processed. Notifications must follow effective state changes,
-                // not raw fallback reports that may be masked by hook authority.
-                let prev_state = self.pane_effective_state(pane_id_val);
-                let prev_agent_label = self.pane_effective_agent_label(pane_id_val);
-
-                // Handle the state change (updates pane state, sets toast on AppState).
-                // Headless mode disables local sound playback separately from the
-                // sound policy so reloads can keep server-side notification policy live.
+            AppEvent::StateChanged { .. } => {
                 self.sync_foreground_client_state();
                 self.app.handle_internal_event(ev);
-
-                // Forward sound notification to clients when server-side sound policy allows it.
-                let is_active_tab = self
-                    .app
-                    .state
-                    .active
-                    .and_then(|ws_idx| self.app.state.workspaces.get(ws_idx))
-                    .is_some_and(|ws| {
-                        ws.find_tab_index_for_pane(pane_id_val)
-                            .is_some_and(|tab_idx| ws.active_tab_index() == tab_idx)
-                    });
-
-                let suppress_active_tab_notifications =
-                    self.active_tab_suppresses_notifications(is_active_tab);
-
-                let next_state = self.pane_effective_state(pane_id_val);
-                let next_agent_label = self.pane_effective_agent_label(pane_id_val);
-
-                if self.app.state.toast_config.delay_seconds == 0
-                    && self.app.state.sound.allows(agent_val)
-                {
-                    if let Some(sound) =
-                        crate::app::actions::notification_sound_for_state_change_with_agent_labels(
-                            suppress_active_tab_notifications,
-                            prev_state,
-                            next_state,
-                            prev_agent_label.as_deref(),
-                            next_agent_label.as_deref(),
-                        )
-                    {
-                        self.send_notify_to_foreground_client(
-                            protocol::NotifyKind::Sound,
-                            sound_notify_message(sound),
-                            None,
-                        );
-                    }
+                let pane_updates = self.app.last_pane_state_updates().to_vec();
+                for update in pane_updates {
+                    self.forward_pane_state_update_notifications_to_clients(&update);
                 }
-
-                let toast_msg = if self.app.state.toast_config.delay_seconds == 0
-                    && should_forward_toast_to_clients(self.app.state.toast_config.delivery)
-                {
-                    if self.app.state.toast.is_some() && self.app.state.toast != toast_before {
-                        self.app
-                            .state
-                            .toast
-                            .as_ref()
-                            .map(|toast| format!("{}: {}", toast.title, toast.context))
-                    } else {
-                        toast_message_from_state_change(
-                            &self.app.state,
-                            &self.app.terminal_runtimes,
-                            pane_id_val,
-                            suppress_active_tab_notifications,
-                            prev_state,
-                            next_state,
-                            prev_agent_label.as_deref(),
-                        )
-                    }
-                } else {
-                    None
-                };
-
-                if let Some(msg) = toast_msg {
-                    self.send_flat_toast_to_foreground_client(
-                        toast_notify_kind(self.app.state.toast_config.delivery)
-                            .expect("toast forwarding requires a client notification kind"),
-                        msg,
-                    );
-                }
-
                 true
             }
             AppEvent::HookStateReported {
@@ -10712,6 +10627,146 @@ next_tab = ""
             other => panic!("expected delayed system toast, got {other:?}"),
         }
         assert!(server.app.state.pending_agent_notifications.is_empty());
+    }
+
+    #[test]
+    fn deferred_completion_forwards_one_sound_and_toast_on_background_clear() {
+        let mut server = test_headless_server();
+        let mut workspace = crate::workspace::Workspace::test_new("background");
+        let pane_id = workspace.tabs[0].root_pane;
+        let foreground_tab = workspace.test_add_tab(Some("foreground"));
+        workspace.active_tab = foreground_tab;
+        server.app.state.workspaces = vec![workspace];
+        server.app.state.ensure_test_terminals();
+        server.app.state.active = Some(0);
+        server.app.state.selected = 0;
+        server.app.state.mode = crate::app::Mode::Terminal;
+        server.app.state.toast_config.delivery = crate::config::ToastDelivery::System;
+        server.app.state.toast_config.delay_seconds = 0;
+
+        let (client_tx, client_control_rx, _client_rx) = test_client_writer();
+        server.clients.insert(
+            1,
+            ClientConnection::new(
+                (80, 24),
+                crate::kitty_graphics::HostCellSize::default(),
+                crate::terminal_theme::TerminalTheme::default(),
+                None,
+                1,
+                RenderEncoding::SemanticFrame,
+                Some(client_tx),
+            ),
+        );
+        server.foreground_client_id = Some(1);
+        server.sync_foreground_client_state();
+
+        for (state, background_work) in [
+            (crate::detect::AgentState::Working, false),
+            (crate::detect::AgentState::Idle, true),
+        ] {
+            assert!(
+                server.handle_internal_event_with_forwarding(AppEvent::StateChanged {
+                    pane_id,
+                    agent: Some(crate::detect::Agent::Pi),
+                    state,
+                    visible_blocker: false,
+                    visible_working: false,
+                    background_work,
+                    process_exited: false,
+                    observed_at: Instant::now(),
+                })
+            );
+        }
+        assert!(
+            client_control_rx
+                .recv_timeout(Duration::from_millis(50))
+                .is_err(),
+            "deferred completion must not notify"
+        );
+        assert!(server
+            .app
+            .state
+            .sound
+            .allows(Some(crate::detect::Agent::Pi)));
+
+        assert!(
+            server.handle_internal_event_with_forwarding(AppEvent::StateChanged {
+                pane_id,
+                agent: Some(crate::detect::Agent::Pi),
+                state: crate::detect::AgentState::Idle,
+                visible_blocker: false,
+                visible_working: false,
+                background_work: false,
+                process_exited: false,
+                observed_at: Instant::now(),
+            })
+        );
+        assert_eq!(server.app.last_pane_state_updates().len(), 1);
+        assert!(server.app.last_pane_state_updates()[0].deferred_completion);
+        assert_eq!(
+            server.app.last_pane_state_updates()[0].known_agent,
+            Some(crate::detect::Agent::Pi)
+        );
+        assert!(!server.app.state.pane_is_in_active_tab(0, pane_id));
+        assert!(!server.active_tab_suppresses_notifications(false));
+        assert_eq!(
+            crate::app::actions::notification_sound_for_pane_state_update(
+                false,
+                &server.app.last_pane_state_updates()[0],
+            ),
+            Some(crate::sound::Sound::Done)
+        );
+        assert_eq!(server.foreground_client_id, Some(1));
+        assert!(server.clients.get(&1).unwrap().writer.is_some());
+        assert_eq!(server.app.state.toast_config.delay_seconds, 0);
+        assert!(should_forward_toast_to_clients(
+            server.app.state.toast_config.delivery
+        ));
+        let first = read_server_message(
+            client_control_rx
+                .recv_timeout(Duration::from_millis(100))
+                .expect("deferred completion sound"),
+        );
+        let second = read_server_message(
+            client_control_rx
+                .recv_timeout(Duration::from_millis(100))
+                .expect("deferred completion toast"),
+        );
+        assert!(matches!(
+            first,
+            ServerMessage::Notify {
+                kind: protocol::NotifyKind::Sound,
+                ..
+            }
+        ));
+        assert!(matches!(
+            second,
+            ServerMessage::Notify {
+                kind: protocol::NotifyKind::SystemToast,
+                ..
+            }
+        ));
+
+        for background_work in [true, false] {
+            assert!(
+                server.handle_internal_event_with_forwarding(AppEvent::StateChanged {
+                    pane_id,
+                    agent: Some(crate::detect::Agent::Pi),
+                    state: crate::detect::AgentState::Idle,
+                    visible_blocker: false,
+                    visible_working: false,
+                    background_work,
+                    process_exited: false,
+                    observed_at: Instant::now(),
+                })
+            );
+        }
+        assert!(
+            client_control_rx
+                .recv_timeout(Duration::from_millis(50))
+                .is_err(),
+            "idle background flaps must not re-emit completion"
+        );
     }
 
     #[test]

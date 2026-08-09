@@ -1,11 +1,10 @@
-pub(super) fn tab_attention_priority(state: crate::detect::AgentState, seen: bool) -> u8 {
-    match (state, seen) {
-        (crate::detect::AgentState::Blocked, _) => 4,
-        (crate::detect::AgentState::Idle, false) => 3,
-        (crate::detect::AgentState::Working, _) => 2,
-        (crate::detect::AgentState::Idle, true) => 1,
-        (crate::detect::AgentState::Unknown, _) => 0,
-    }
+pub(super) fn tab_attention_priority(
+    state: crate::detect::AgentState,
+    seen: bool,
+    background_work: bool,
+) -> u8 {
+    crate::workspace::AgentPresentation::from_parts(state, seen, background_work)
+        .attention_priority()
 }
 
 fn parse_api_key(key: &str) -> Option<crossterm::event::KeyEvent> {

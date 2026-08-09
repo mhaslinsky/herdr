@@ -98,6 +98,8 @@ pub struct TerminalStateMutation {
     pub session_ref_changed: bool,
     pub agent_released: bool,
     pub background_work_changed: bool,
+    pub completion_deferred: bool,
+    pub deferred_completion: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,6 +127,7 @@ pub struct TerminalState {
     fallback_visible_blocker: bool,
     /// Detection-sourced background work, independent of semantic agent state.
     pub background_work: bool,
+    deferred_completion_owed: bool,
     fallback_observed_at: Option<Instant>,
     pub hook_authority: Option<HookAuthority>,
     pub agent_metadata: HashMap<String, AgentMetadata>,
@@ -159,6 +162,7 @@ impl TerminalState {
             fallback_state: AgentState::Unknown,
             fallback_visible_blocker: false,
             background_work: false,
+            deferred_completion_owed: false,
             fallback_observed_at: None,
             hook_authority: None,
             agent_metadata: HashMap::new(),
@@ -320,6 +324,7 @@ impl TerminalState {
         let mut background_work_changed = false;
         if process_exited {
             background_work_changed = self.set_detection_background_work(false);
+            self.deferred_completion_owed = false;
         }
         let newer_custom_authority = process_exited
             && self.hook_authority.as_ref().is_some_and(|authority| {
@@ -354,6 +359,8 @@ impl TerminalState {
                     != self.current_session_identity_for_persistence(),
                 agent_released: false,
                 background_work_changed,
+                completion_deferred: false,
+                deferred_completion: false,
             };
         }
         let replacement_process_detected = !process_exited
@@ -374,6 +381,8 @@ impl TerminalState {
                     != self.current_session_identity_for_persistence(),
                 agent_released: false,
                 background_work_changed,
+                completion_deferred: false,
+                deferred_completion: false,
             };
         }
         background_work_changed |= self.set_detection_background_work(background_work);
@@ -574,18 +583,44 @@ impl TerminalState {
         if agent_released {
             self.clear_agent_name();
         }
+        let mut effective_state_change = self.recompute_effective_state(
+            previous_agent_label,
+            previous_known_agent,
+            previous_state,
+            previous_presentation,
+            now,
+        );
+        let completion_deferred = !process_exited
+            && self.background_work
+            && effective_state_change.as_ref().is_some_and(|change| {
+                change.state == AgentState::Idle
+                    && matches!(
+                        change.previous_state,
+                        AgentState::Working | AgentState::Blocked
+                    )
+            });
+        if completion_deferred {
+            self.deferred_completion_owed = true;
+        } else if self.state != AgentState::Idle {
+            self.deferred_completion_owed = false;
+        }
+        let deferred_completion = !process_exited
+            && background_work_changed
+            && !self.background_work
+            && self.state == AgentState::Idle
+            && self.deferred_completion_owed;
+        if deferred_completion {
+            self.deferred_completion_owed = false;
+            effective_state_change = Some(self.unchanged_effective_state_change_at(now));
+        }
         TerminalStateMutation {
-            effective_state_change: self.recompute_effective_state(
-                previous_agent_label,
-                previous_known_agent,
-                previous_state,
-                previous_presentation,
-                now,
-            ),
+            effective_state_change,
             session_ref_changed: previous_session
                 != self.current_session_identity_for_persistence(),
             agent_released,
             background_work_changed,
+            completion_deferred,
+            deferred_completion,
         }
     }
 
@@ -596,6 +631,11 @@ impl TerminalState {
         self.background_work = background_work;
         self.revision = self.revision.wrapping_add(1);
         true
+    }
+
+    #[cfg(test)]
+    pub(crate) fn deferred_completion_owed(&self) -> bool {
+        self.deferred_completion_owed
     }
 
     #[cfg(test)]
@@ -755,6 +795,8 @@ impl TerminalState {
             session_ref_changed: previous_session != current_session,
             agent_released: false,
             background_work_changed,
+            completion_deferred: false,
+            deferred_completion: false,
         })
     }
 
@@ -1452,6 +1494,8 @@ impl TerminalState {
                     session_ref_changed: previous_session != current_session,
                     agent_released: false,
                     background_work_changed: false,
+                    completion_deferred: false,
+                    deferred_completion: false,
                 });
             }
             return None;
@@ -1553,6 +1597,8 @@ impl TerminalState {
             session_ref_changed: previous_session != current_session,
             agent_released: false,
             background_work_changed: false,
+            completion_deferred: false,
+            deferred_completion: false,
         })
     }
 
@@ -1671,6 +1717,8 @@ impl TerminalState {
             session_ref_changed: previous_session.is_some(),
             agent_released: false,
             background_work_changed: false,
+            completion_deferred: false,
+            deferred_completion: false,
         })
     }
 
@@ -1737,6 +1785,8 @@ impl TerminalState {
             session_ref_changed: previous_session != current_session,
             agent_released: !process_owns_agent,
             background_work_changed: false,
+            completion_deferred: false,
+            deferred_completion: false,
         })
     }
 
@@ -1984,6 +2034,7 @@ impl TerminalState {
         self.fallback_state = AgentState::Unknown;
         self.fallback_visible_blocker = false;
         self.set_detection_background_work(false);
+        self.deferred_completion_owed = false;
         self.fallback_observed_at = None;
         self.hook_authority = None;
         self.persisted_agent_session = None;

@@ -956,6 +956,16 @@ fn claude_empty_osc_empty_screen_is_idle_fallback() {
     assert!(!result.visible_idle);
 }
 
+#[test]
+fn claude_background_shell_footer_requires_a_positive_count() {
+    for footer in ["· 1 shell ·", "status · 12 shells · more"] {
+        assert!(explain(Agent::Claude, footer).background_work, "{footer}");
+    }
+    for footer in ["· 0 shells ·", "· shells ·"] {
+        assert!(!explain(Agent::Claude, footer).background_work, "{footer}");
+    }
+}
+
 // --- Codex OSC rules ---
 
 #[test]

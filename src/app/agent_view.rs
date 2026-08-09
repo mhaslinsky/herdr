@@ -70,6 +70,7 @@ pub(crate) fn apply_agent_view(app: &AppState, entries: &mut Vec<AgentPanelEntry
                 std::cmp::Reverse(super::api_helpers::tab_attention_priority(
                     entry.state,
                     entry.seen,
+                    entry.background_work,
                 )),
                 std::cmp::Reverse(entry.last_agent_state_change_seq),
             )
@@ -308,9 +309,11 @@ fn builtin_field_value(
     field: AgentViewBuiltinField,
 ) -> Option<EvalValue> {
     match field {
-        AgentViewBuiltinField::Status => {
-            Some(EvalValue::String(status_name(entry.state, entry.seen)))
-        }
+        AgentViewBuiltinField::Status => Some(EvalValue::String(status_name(
+            entry.state,
+            entry.seen,
+            entry.background_work,
+        ))),
         AgentViewBuiltinField::WorkspaceId => app
             .workspaces
             .get(entry.ws_idx)
@@ -372,11 +375,17 @@ fn sort_value(
                 .and_then(|workspace| workspace.public_pane_number(entry.pane_id))
                 .map(|number| EvalValue::Number(number as u64)),
             AgentViewBuiltinSortField::Attention => Some(EvalValue::Number(u64::from(
-                super::api_helpers::tab_attention_priority(entry.state, entry.seen),
+                super::api_helpers::tab_attention_priority(
+                    entry.state,
+                    entry.seen,
+                    entry.background_work,
+                ),
             ))),
-            AgentViewBuiltinSortField::Status => {
-                Some(EvalValue::String(status_name(entry.state, entry.seen)))
-            }
+            AgentViewBuiltinSortField::Status => Some(EvalValue::String(status_name(
+                entry.state,
+                entry.seen,
+                entry.background_work,
+            ))),
             AgentViewBuiltinSortField::Agent => {
                 entry.agent_kind_label.clone().map(EvalValue::String)
             }
@@ -388,7 +397,10 @@ fn sort_value(
     }
 }
 
-fn status_name(state: crate::detect::AgentState, seen: bool) -> String {
+fn status_name(state: crate::detect::AgentState, seen: bool, background_work: bool) -> String {
+    if state == crate::detect::AgentState::Idle && background_work {
+        return "waiting".to_string();
+    }
     let status = match (state, seen) {
         (crate::detect::AgentState::Idle, false) => AgentStatus::Done,
         (crate::detect::AgentState::Idle, true) => AgentStatus::Idle,

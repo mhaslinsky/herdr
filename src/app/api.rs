@@ -101,6 +101,7 @@ impl App {
     }
 
     pub(crate) fn handle_internal_event(&mut self, ev: AppEvent) {
+        self.last_pane_state_updates.clear();
         if let AppEvent::TerminalBell { count, .. } = ev {
             if let Err(err) =
                 crate::terminal_effects::write_terminal_bells(&mut std::io::stdout(), count)
@@ -286,6 +287,7 @@ impl App {
         let terminal_cwd_reported = matches!(ev, AppEvent::TerminalCwdReported { .. });
         let previous_toast = self.state.toast.clone();
         let pane_updates = self.state.handle_app_event(ev);
+        self.last_pane_state_updates.clone_from(&pane_updates);
         if let Some(agents) = manifest_update_agents {
             self.reset_agent_detection_for_agents(&agents);
         }
@@ -353,6 +355,10 @@ impl App {
 
         self.sync_toast_deadline(previous_toast);
         self.shutdown_detached_terminal_runtimes();
+    }
+
+    pub(crate) fn last_pane_state_updates(&self) -> &[crate::app::actions::PaneStateUpdate] {
+        &self.last_pane_state_updates
     }
 
     fn reset_agent_detection_for_agents(&self, agents: &[crate::detect::Agent]) {

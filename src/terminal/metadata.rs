@@ -291,6 +291,8 @@ impl TerminalState {
             session_ref_changed: false,
             agent_released: false,
             background_work_changed: false,
+            completion_deferred: false,
+            deferred_completion: false,
         })
     }
     pub fn effective_title(&self) -> Option<String> {
@@ -375,6 +377,8 @@ impl TerminalState {
             session_ref_changed: false,
             agent_released: false,
             background_work_changed: false,
+            completion_deferred: false,
+            deferred_completion: false,
         })
     }
 

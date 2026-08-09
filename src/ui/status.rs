@@ -196,8 +196,12 @@ pub(super) fn render_config_diagnostic(frame: &mut Frame, area: Rect, message: &
 pub(super) fn state_icon_symbol(
     state: AgentState,
     seen: bool,
+    background_work: bool,
     indicator_style: StatusIndicatorStyle,
 ) -> &'static str {
+    if matches!(state, AgentState::Idle) && background_work {
+        return "◐";
+    }
     match (indicator_style, state, seen) {
         (StatusIndicatorStyle::Dots, AgentState::Blocked, _) => "●",
         (StatusIndicatorStyle::Dots, AgentState::Working, _) => "●",
@@ -215,16 +219,20 @@ pub(super) fn state_icon_symbol(
 pub(super) fn state_icon(
     state: AgentState,
     seen: bool,
+    background_work: bool,
     indicator_style: StatusIndicatorStyle,
     p: &Palette,
 ) -> (&'static str, Style) {
     (
-        state_icon_symbol(state, seen, indicator_style),
-        Style::default().fg(state_label_color(state, seen, p)),
+        state_icon_symbol(state, seen, background_work, indicator_style),
+        Style::default().fg(state_label_color(state, seen, background_work, p)),
     )
 }
 
-pub(super) fn state_label(state: AgentState, seen: bool) -> &'static str {
+pub(super) fn state_label(state: AgentState, seen: bool, background_work: bool) -> &'static str {
+    if matches!(state, AgentState::Idle) && background_work {
+        return "waiting";
+    }
     match (state, seen) {
         (AgentState::Blocked, _) => "blocked",
         (AgentState::Working, _) => "working",
@@ -234,7 +242,15 @@ pub(super) fn state_label(state: AgentState, seen: bool) -> &'static str {
     }
 }
 
-pub(super) fn state_label_color(state: AgentState, seen: bool, p: &Palette) -> Color {
+pub(super) fn state_label_color(
+    state: AgentState,
+    seen: bool,
+    background_work: bool,
+    p: &Palette,
+) -> Color {
+    if matches!(state, AgentState::Idle) && background_work {
+        return p.blue;
+    }
     match (state, seen) {
         (AgentState::Blocked, _) => p.red,
         (AgentState::Working, _) => p.yellow,
@@ -282,12 +298,28 @@ mod tests {
             .into_iter()
             .zip(expected_symbols)
             {
-                let (actual_symbol, style) = state_icon(state, seen, indicator_style, &palette);
+                let (actual_symbol, style) =
+                    state_icon(state, seen, false, indicator_style, &palette);
                 assert_eq!(actual_symbol, expected_symbol);
                 assert_eq!(display_width_u16(actual_symbol), 1);
                 assert_eq!(style.fg, Some(color));
             }
         }
+    }
+
+    #[test]
+    fn waiting_uses_the_shared_symbol_and_blue_palette() {
+        let palette = Palette::catppuccin();
+        for indicator_style in [StatusIndicatorStyle::Dots, StatusIndicatorStyle::Symbols] {
+            for seen in [true, false] {
+                let (symbol, style) =
+                    state_icon(AgentState::Idle, seen, true, indicator_style, &palette);
+                assert_eq!(symbol, "◐");
+                assert_eq!(style.fg, Some(palette.blue));
+            }
+        }
+        assert_eq!(state_label(AgentState::Idle, true, true), "waiting");
+        assert_eq!(state_label(AgentState::Idle, false, true), "waiting");
     }
 
     #[test]
