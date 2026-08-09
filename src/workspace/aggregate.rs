@@ -150,6 +150,7 @@ impl Workspace {
             .unwrap_or(AgentPresentation::Unknown)
     }
 
+    #[allow(dead_code)]
     pub fn aggregate_state(
         &self,
         terminals: &HashMap<TerminalId, TerminalState>,

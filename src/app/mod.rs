@@ -4038,6 +4038,73 @@ mod tests {
     }
 
     #[test]
+    fn workspace_info_uses_presentation_aware_attention_order() {
+        let mut app = test_app();
+        let mut workspace = Workspace::test_new("api-waiting-workspace");
+        let waiting_pane = workspace.tabs[0].root_pane;
+        let working_pane = workspace.test_split(ratatui::layout::Direction::Horizontal);
+        app.state.workspaces = vec![workspace];
+        app.state.ensure_test_terminals();
+
+        let waiting_terminal = app.state.workspaces[0]
+            .terminal_id(waiting_pane)
+            .cloned()
+            .unwrap();
+        let working_terminal = app.state.workspaces[0]
+            .terminal_id(working_pane)
+            .cloned()
+            .unwrap();
+        app.state
+            .terminals
+            .get_mut(&waiting_terminal)
+            .unwrap()
+            .state = AgentState::Idle;
+        app.state
+            .terminals
+            .get_mut(&waiting_terminal)
+            .unwrap()
+            .background_work = true;
+        app.state.workspaces[0]
+            .pane_state_mut(waiting_pane)
+            .unwrap()
+            .seen = false;
+        app.state
+            .terminals
+            .get_mut(&working_terminal)
+            .unwrap()
+            .state = AgentState::Working;
+
+        assert_eq!(
+            app.workspace_info(0).agent_status,
+            crate::api::schema::AgentStatus::Working
+        );
+    }
+
+    #[test]
+    fn tab_info_projects_waiting_as_idle_instead_of_done() {
+        let mut app = test_app();
+        app.state.workspaces = vec![Workspace::test_new("api-waiting-tab")];
+        app.state.ensure_test_terminals();
+        let pane_id = app.state.workspaces[0].tabs[0].root_pane;
+        let terminal_id = app.state.workspaces[0]
+            .terminal_id(pane_id)
+            .cloned()
+            .unwrap();
+        let terminal = app.state.terminals.get_mut(&terminal_id).unwrap();
+        terminal.state = AgentState::Idle;
+        terminal.background_work = true;
+        app.state.workspaces[0]
+            .pane_state_mut(pane_id)
+            .unwrap()
+            .seen = false;
+
+        assert_eq!(
+            app.tab_info(0, 0).unwrap().agent_status,
+            crate::api::schema::AgentStatus::Idle
+        );
+    }
+
+    #[test]
     fn legacy_bare_tab_id_uses_tab_position_not_public_tab_number() {
         let mut app = test_app();
         let mut workspace = Workspace::test_new("legacy-tab-id");

@@ -204,7 +204,7 @@ fn validate_field_value(field: &AgentViewField, value: &AgentViewValue) -> Resul
                 AgentViewField::Builtin(AgentViewBuiltinField::Status)
             ) && !matches!(
                 value.as_str(),
-                "idle" | "working" | "blocked" | "done" | "unknown"
+                "idle" | "working" | "blocked" | "waiting" | "done" | "unknown"
             ) {
                 return Err(format!("unknown agent status `{value}`"));
             }
@@ -581,5 +581,43 @@ mod tests {
         assert!(validate_agent_view(&mut spec)
             .unwrap_err()
             .contains("context type"));
+    }
+
+    #[test]
+    fn waiting_status_filter_is_valid_and_selects_waiting_entries() {
+        let mut state = state_with_agents();
+        let pane_id = state.workspaces[0].tabs[0].root_pane;
+        let terminal_id = state.workspaces[0].tabs[0].panes[&pane_id]
+            .attached_terminal_id
+            .clone();
+        state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .background_work = true;
+        let mut spec = AgentViewSetParams {
+            source: "example.views".to_string(),
+            label: None,
+            filter: Some(AgentViewFilter::Eq {
+                field: AgentViewField::Builtin(AgentViewBuiltinField::Status),
+                value: AgentViewValue::String("waiting".to_string()),
+            }),
+            sort: Vec::new(),
+        };
+
+        assert_eq!(validate_agent_view(&mut spec), Ok(()));
+        state.agent_view_override = Some(spec);
+        let entries = crate::ui::agent_panel_entries(&state);
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].ws_idx, 0);
+        assert_eq!(
+            status_name(
+                entries[0].state,
+                entries[0].seen,
+                entries[0].background_work
+            ),
+            "waiting"
+        );
     }
 }
