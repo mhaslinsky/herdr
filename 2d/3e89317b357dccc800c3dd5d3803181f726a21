@@ -1,0 +1,167 @@
+src/app/actions.rs
+  s_507dc762e2a5ee::t_b5dd13615d29fe 433-435,457,511-518,548,564,619,622-627,629,648,926,930,932-933,952,954-955,971-972,977-983,986,1018,1024-1026,1040-1041
+  s_507dc762e2a5ee::t_9bb82d6595c393 448,488-493,628,3181-3183,4990-4999,5064-5073
+  s_507dc762e2a5ee::t_81cdf4cdde636e 3170-3175
+  s_507dc762e2a5ee::t_9643134ebffa55 931,934,953,1027-1028
+  s_507dc762e2a5ee::t_a1a01f124e20f5 187,213-215
+  s_507dc762e2a5ee::t_ed79b091def3db 1042,4984-4989,5000-5063,5074-5099
+  s_507dc762e2a5ee::t_f24a5c71f4b337 118,120,127-128,166,168-170,176-178,190-198,209-212,216-227,288-289,1101,1119-1120,3049,3058-3064,3091-3092,3159-3160,3179-3180,3195,3206,3211
+  s_507dc762e2a5ee::t_5f4534d0261600 5100
+src/detect/manifests/grok.toml
+  s_507dc762e2a5ee::t_0f96e461b6b211 2-4
+src/api/wait.rs
+  s_507dc762e2a5ee::t_edb25181c9507e 461,463-465
+  s_507dc762e2a5ee::t_a9f676da18be35 793-846
+  s_507dc762e2a5ee::t_f31eb3770244a7 548-552
+  s_507dc762e2a5ee::t_b88f044bbeccdf 847
+src/ui/sidebar/tokens.rs
+  s_507dc762e2a5ee::t_f28ff9b4d46233 175
+docs/next/website/src/content/docs/socket-api.mdx
+  s_507dc762e2a5ee::t_3340363efc8aeb 734
+src/api/server.rs
+  s_507dc762e2a5ee::t_5faec65b218e9f 1235
+  s_507dc762e2a5ee::t_3f3b37801f524b 1248
+  s_507dc762e2a5ee::t_d0bff942907c2d 914-945,1177-1234,1236-1247,1249-1251,1253,1334
+  s_507dc762e2a5ee::t_a42481fb992d70 1254-1333
+  s_507dc762e2a5ee::t_e56b642f544ec6 1252
+  s_507dc762e2a5ee::t_727e64c14c37df 1335
+src/ui/mobile.rs
+  s_507dc762e2a5ee::t_e2ff2c565ae8e1 329,538-544,606,755,758-760,987,993,997,1004-1006,1009-1010,1021,1081-1092,1116,1123-1128
+  s_507dc762e2a5ee::t_b09ad56a652d85 1180,1264,1311,1329,1405,1423
+  s_507dc762e2a5ee::t_1e1c79b8174305 410-411,1045,1059,1073,1101
+  s_507dc762e2a5ee::t_9643134ebffa55 330,607,1007-1008
+  s_507dc762e2a5ee::t_7a2c506f694dcf 1093-1094
+src/ui/status.rs
+  s_507dc762e2a5ee::t_9643134ebffa55 202,233,251,314-318,322
+  s_507dc762e2a5ee::t_916c8e8c44f12c 311-313,321
+  s_507dc762e2a5ee::t_f28ff9b4d46233 301-302
+  s_507dc762e2a5ee::t_9d14ac535235bb 199,203-204,222,227-228,232,234-235,245-250,252-253,323
+  s_507dc762e2a5ee::t_6ca0d7baf0e881 310
+  s_507dc762e2a5ee::t_74834e0899589a 319-320
+  s_507dc762e2a5ee::t_0b122463e8d9a0 324
+src/ui/sidebar.rs
+  s_507dc762e2a5ee::t_946cb33caa19f4 1263-1264
+  s_507dc762e2a5ee::t_6bcdc0edd7fd4d 256
+  s_507dc762e2a5ee::t_70a6e0f1b67408 37,178,188-192,194-195,206,222,250,254-255,257,548-552,554,790-798,864-870,1310,1314-1321,1323-1328,1341,1539-1545
+  s_507dc762e2a5ee::t_9643134ebffa55 193,1515
+src/terminal/metadata.rs
+  s_507dc762e2a5ee::t_f28ff9b4d46233 294-295,380-381
+docs/next/website/src/content/docs/agent-automation.mdx
+  s_507dc762e2a5ee::t_3340363efc8aeb 34,76,78
+src/app/creation.rs
+  s_507dc762e2a5ee::t_e6e880be02cb98 323,330,332-335
+src/workspace.rs
+  s_507dc762e2a5ee::t_6bcdc0edd7fd4d 25-27
+src/app/state.rs
+  s_507dc762e2a5ee::t_b5dd13615d29fe 859
+  s_507dc762e2a5ee::t_f28ff9b4d46233 2253
+src/detect/manifests/claude.toml
+  s_507dc762e2a5ee::t_0f96e461b6b211 2-4,7-12
+  s_69d60e9ce260a4::t_9854c287831109 13
+src/app/agent_view.rs
+  s_507dc762e2a5ee::t_e6e880be02cb98 73,378-382,400,402-403
+  s_507dc762e2a5ee::t_9643134ebffa55 312-316,384-387,401
+  s_507dc762e2a5ee::t_fdd8c014598e3c 383
+src/pane/agent_detection.rs
+  s_507dc762e2a5ee::t_ed79b091def3db 706-721,723-758
+  s_507dc762e2a5ee::t_5faec65b218e9f 71,722
+  s_507dc762e2a5ee::t_57bb292fc14d84 28-29,34,40-70,72-77,296-297
+  s_507dc762e2a5ee::t_2564d65803c1b6 287-294,759
+  s_6350adff40377c::t_e4ec3c1576462e 705,760
+src/server/headless.rs
+  s_507dc762e2a5ee::t_a58938d2621c95 2148,2153
+  s_507dc762e2a5ee::t_a08e5ae8e8f8f8 2151-2152,10704-10710
+  s_507dc762e2a5ee::t_dff1f2d4e6cadb 10711
+  s_507dc762e2a5ee::t_8c6ff324010f12 10635-10639,10641-10642
+  s_507dc762e2a5ee::t_dd9f78942a0327 10645
+  s_507dc762e2a5ee::t_879e46eac794c0 10719-10724
+  s_507dc762e2a5ee::t_dfc328949840b1 10633-10634,10640,10643-10644,10646-10666,10679-10684,10691,10725-10750,10763-10769
+  s_507dc762e2a5ee::t_a170b276aa159f 10712-10718
+  s_507dc762e2a5ee::t_3f3b37801f524b 10686-10690
+  s_507dc762e2a5ee::t_5faec65b218e9f 1897,10667-10678,10685,10692-10703,10751-10762
+  s_507dc762e2a5ee::t_034b6f24c4db97 1894-1896
+  s_e89a9b10978fae::t_797f2443240ff1 10632,10770-10771
+src/app/api_helpers.rs
+  s_507dc762e2a5ee::t_e6e880be02cb98 1-7
+src/detect/manifest/tests.rs
+  s_507dc762e2a5ee::t_a74394e269af3c 964
+  s_507dc762e2a5ee::t_916c8e8c44f12c 959-963,965-968
+src/terminal/state.rs
+  s_507dc762e2a5ee::t_a08e5ae8e8f8f8 587-592,597-600,636
+  s_507dc762e2a5ee::t_39d29c8581788c 327
+  s_507dc762e2a5ee::t_15c740cd6eb1bb 607-611
+  s_507dc762e2a5ee::t_f28ff9b4d46233 1497-1498,1600-1601
+  s_507dc762e2a5ee::t_dfaa2362afd449 1788-1789
+  s_507dc762e2a5ee::t_96a86d8f275fea 637-638
+  s_507dc762e2a5ee::t_1f2b62a60a40f2 101-102,130,165,362-363,384-385,586,593-596,601-606,612-615,617,622-623,798-799,1720-1721,2037
+  s_507dc762e2a5ee::t_e466b218062250 639-640
+src/app/api.rs
+  s_507dc762e2a5ee::t_a58938d2621c95 104,290
+  s_507dc762e2a5ee::t_a08e5ae8e8f8f8 360-361
+  s_b25fc3eb75d8a6::t_a36d87123c76f7 362-363
+src/ui/navigator.rs
+  s_507dc762e2a5ee::t_ba656d97dd964e 116,122,204-210,270-275,497,499-501,538-542,544-545,603
+  s_507dc762e2a5ee::t_9643134ebffa55 543
+docs/next/website/src/content/docs/cli-reference.mdx
+  s_507dc762e2a5ee::t_3340363efc8aeb 312,314
+docs/next/website/src/content/docs/agents.mdx
+  s_507dc762e2a5ee::t_3340363efc8aeb 93
+src/app/mod.rs
+  s_507dc762e2a5ee::t_a58938d2621c95 108,773
+docs/next/website/src/content/docs/concepts.mdx
+  s_507dc762e2a5ee::t_3340363efc8aeb 47,49
+src/workspace/aggregate.rs
+  s_507dc762e2a5ee::t_9643134ebffa55 102-103,288-296
+  s_507dc762e2a5ee::t_37208a29bb9de4 23,67,87-101,104-131,133-152,301
+  s_507dc762e2a5ee::t_916c8e8c44f12c 264-287,297-300
+  s_507dc762e2a5ee::t_6d87750da7a869 263
+  s_507dc762e2a5ee::t_431d61d1dadd93 302
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "2d3e89317b357dccc800c3dd5d3803181f726a21",
+  "prompts": {},
+  "sessions": {
+    "s_507dc762e2a5ee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fe83a-a2f9-7e12-badf-8d49fa0ff25c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    },
+    "s_6350adff40377c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fe859-2505-7b43-aa16-82ff49d130aa",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    },
+    "s_69d60e9ce260a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fe832-1285-7202-872b-f3387c99fb26",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    },
+    "s_b25fc3eb75d8a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1c2cbf5a-6554-40fa-95d5-27dfefcaf4aa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    },
+    "s_e89a9b10978fae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fe7b9-d0d0-7202-84c7-26458e5ab679",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
