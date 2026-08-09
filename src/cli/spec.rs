@@ -354,7 +354,7 @@ fn agent_command() -> Command {
                         .help("Fail after this many milliseconds"),
                 )
                 .after_help(
-                    "When submission starts from a non-working state, --wait first requires an observed state change within 5000ms; otherwise it returns agent_prompt_stalled. A shorter --timeout returns timeout instead. It then matches idle, done, or blocked by default, or any exact --until state. It does not track turns: if the agent is already working, that active turn's completion may match. Without --timeout, the settled-state wait is indefinite.",
+                    "When submission starts from a non-working state, --wait first requires observed working or blocked activity within 5000ms; otherwise it returns agent_prompt_stalled. A shorter --timeout returns timeout instead. It then matches idle, done, or blocked by default, or any exact --until state. It does not track turns: if the agent is already working, that active turn's completion may match. Without --timeout, the settled-state wait is indefinite.",
                 ),
         )
         .subcommand(
