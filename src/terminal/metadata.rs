@@ -498,6 +498,9 @@ impl TerminalState {
     }
 
     fn agent_metadata_is_expired(&self, metadata: &AgentMetadata, now: Instant) -> bool {
+        if metadata.expiry_event_pending {
+            return false;
+        }
         self.agent_metadata_expiry(metadata)
             .is_some_and(|deadline| now >= deadline)
     }
