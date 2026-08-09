@@ -1,0 +1,64 @@
+src/cli/agent.rs
+  s_b0e8b08a621978::t_bf01aa82425843 158-160,264,266-286,851-868
+  s_b0e8b08a621978::t_5f7217320b2e8e 265
+  s_084b716bbc229e::t_706c6c16b837bd 869
+scripts/agent_detection_manifest_check.py
+  s_b0e8b08a621978::t_7fa67e18b7c8d1 160
+scripts/test_agent_detection_manifest_check.py
+  s_b0e8b08a621978::t_9d803e2532fc06 80-81,184-191
+  s_084b716bbc229e::t_1c10cf20bf718d 192-201
+src/app/actions.rs
+  s_b0e8b08a621978::t_fbe49909b09ab7 2980-2983,2992-2996,5068-5105
+  s_b0e8b08a621978::t_5f7217320b2e8e 2979
+  s_084b716bbc229e::t_1505579f033f26 5106-5107
+src/app/api/agents.rs
+  s_b0e8b08a621978::t_1ce6a32b565356 188-189
+src/detect/manifest/tests.rs
+  s_b0e8b08a621978::t_9d803e2532fc06 620-640,726-749,755
+  s_b0e8b08a621978::t_878004b78d9d07 750-753
+  s_084b716bbc229e::t_abd24f4d6324fb 754,756
+src/pane/agent_detection.rs
+  s_b0e8b08a621978::t_69a5aea7fc6bcb 586-591,593-633,635-645,649-654
+  s_b0e8b08a621978::t_ead677dfec31cd 247-262,339
+  s_b0e8b08a621978::t_9fe0621b805ba5 317,327,329,336,592
+  s_b0e8b08a621978::t_c555e95eccd86e 634,646-648
+  s_084b716bbc229e::t_e833669a368508 655
+src/app/api.rs
+  s_b0e8b08a621978::t_bf01aa82425843 1574,1589-1590,1596,1615,1627-1630
+  s_b0e8b08a621978::t_bdcd5ff1ad6be7 1591-1595,1597-1602,1616-1619,1623-1626
+  s_b0e8b08a621978::t_dfbe22a7bd1944 1620-1622
+src/pane.rs
+  s_b0e8b08a621978::t_9fe0621b805ba5 876,882,2402,2408
+src/detect/manifest.rs
+  s_b0e8b08a621978::t_9357413c6017b3 435
+  s_b0e8b08a621978::t_9d803e2532fc06 171,426,479
+  s_b0e8b08a621978::t_5f7217320b2e8e 952
+src/terminal/state.rs
+  s_b0e8b08a621978::t_5f7217320b2e8e 744-745
+  s_b0e8b08a621978::t_3d4a2331b6fcda 757,2237-2273
+  s_084b716bbc229e::t_a5fdea30fd98c2 2274-2275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "303647e46cbdf1938106fb59717717efc85b9585",
+  "prompts": {},
+  "sessions": {
+    "s_084b716bbc229e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fe73a-4b4d-7063-b57f-65f2398faafe",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    },
+    "s_b0e8b08a621978": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fe4d8-0902-7a81-9f92-a3e60940c707",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
