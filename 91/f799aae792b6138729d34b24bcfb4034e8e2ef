@@ -1,0 +1,21 @@
+src/detect/manifest/tests.rs
+  s_507dc762e2a5ee::t_411c2aab303eff 969-975
+src/detect/manifests/grok.toml
+  s_507dc762e2a5ee::t_0f96e461b6b211 82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "91f799aae792b6138729d34b24bcfb4034e8e2ef",
+  "prompts": {},
+  "sessions": {
+    "s_507dc762e2a5ee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fe83a-a2f9-7e12-badf-8d49fa0ff25c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
