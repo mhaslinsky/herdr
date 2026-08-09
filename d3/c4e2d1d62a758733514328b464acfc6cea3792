@@ -1,0 +1,19 @@
+tests/cli/agents.rs
+  s_507dc762e2a5ee::t_6c961ab02abee2 184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "d3c4e2d1d62a758733514328b464acfc6cea3792",
+  "prompts": {},
+  "sessions": {
+    "s_507dc762e2a5ee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fe83a-a2f9-7e12-badf-8d49fa0ff25c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
