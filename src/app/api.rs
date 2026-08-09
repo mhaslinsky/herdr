@@ -592,7 +592,7 @@ impl App {
         };
         let workspace_id = self.public_workspace_id(update.ws_idx);
 
-        if update.agent_name_changed {
+        if update.agent_name_changed || update.background_work_changed {
             self.emit_pane_updated(update.ws_idx, update.pane_id);
         }
 
@@ -1571,7 +1571,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn agent_explain_rejects_hook_only_full_lifecycle_authority() {
+    async fn agent_explain_reports_background_work_unavailable_under_hook_authority() {
         let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut app = App::new(
             &crate::config::Config::default(),
@@ -1586,17 +1586,20 @@ mod tests {
         let terminal_id = app.state.workspaces[0].tabs[0].panes[&pane_id]
             .attached_terminal_id
             .clone();
-        app.state
-            .terminals
-            .get_mut(&terminal_id)
-            .unwrap()
-            .set_hook_authority(
-                "herdr:omp".to_string(),
-                "omp".to_string(),
-                AgentState::Working,
-                None,
-                Some(1),
-            );
+        let terminal = app.state.terminals.get_mut(&terminal_id).unwrap();
+        terminal.set_detected_state(Some(Agent::Omp), AgentState::Idle);
+        terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
+            source: "herdr:omp".to_string(),
+            agent: "omp".to_string(),
+            session_ref: crate::agent_resume::AgentSessionRef::id("omp-session").unwrap(),
+        });
+        terminal.set_hook_authority(
+            "herdr:omp".to_string(),
+            "omp".to_string(),
+            AgentState::Working,
+            None,
+            Some(1),
+        );
         let runtime = crate::terminal::TerminalRuntime::test_with_screen_bytes(80, 24, b"");
         app.terminal_runtimes.insert(terminal_id, runtime);
         let target = app.public_pane_id(0, pane_id).unwrap();
@@ -1609,7 +1612,22 @@ mod tests {
         });
         let response: serde_json::Value = serde_json::from_str(&response).unwrap();
 
-        assert_eq!(response["error"]["code"], "agent_not_found");
+        assert_eq!(response["result"]["type"], "agent_explain");
+        assert_eq!(
+            response["result"]["explain"]["screen_detection_skipped"],
+            true
+        );
+        let explain_object = response["result"]["explain"].as_object().unwrap();
+        assert!(explain_object.contains_key("background_work"));
+        assert!(explain_object.contains_key("background_work_rules"));
+        assert_eq!(
+            response["result"]["explain"]["background_work"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            response["result"]["explain"]["background_work_rules"],
+            serde_json::Value::Null
+        );
     }
 
     #[tokio::test]
@@ -1750,6 +1768,7 @@ mod tests {
             state: AgentState::Working,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -1759,6 +1778,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -1843,6 +1863,7 @@ mod tests {
             state: AgentState::Working,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -1852,6 +1873,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -1958,6 +1980,7 @@ mod tests {
                 state: AgentState::Idle,
                 visible_blocker: false,
                 visible_working: false,
+                background_work: false,
                 process_exited: true,
                 observed_at: std::time::Instant::now(),
             });
@@ -1972,6 +1995,64 @@ mod tests {
                 }
             )));
         }
+    }
+
+    #[test]
+    fn background_only_change_emits_pane_updated_without_status_transition() {
+        let event_hub = crate::api::EventHub::default();
+        let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut app = App::new(
+            &crate::config::Config::default(),
+            true,
+            None,
+            api_rx,
+            event_hub.clone(),
+        );
+        let workspace = crate::workspace::Workspace::test_new("background-edge");
+        let pane_id = workspace.tabs[0].root_pane;
+        let terminal_id = workspace.terminal_id(pane_id).cloned().unwrap();
+        app.state.workspaces = vec![workspace];
+        app.state.ensure_test_terminals();
+        app.state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .set_detected_state(Some(Agent::Codex), AgentState::Idle);
+
+        let before = app.pane_info(0, pane_id).unwrap();
+        let previous_state_change_seq =
+            app.state.terminals[&terminal_id].last_agent_state_change_seq;
+        let event_sequence = event_hub.current_sequence();
+
+        app.handle_internal_event(AppEvent::StateChanged {
+            pane_id,
+            agent: Some(Agent::Codex),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: true,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+
+        let after = app.pane_info(0, pane_id).unwrap();
+        assert!(after.background_work);
+        assert_eq!(after.revision, before.revision + 1);
+        assert_eq!(after.agent_status, before.agent_status);
+        assert_eq!(
+            app.state.terminals[&terminal_id].last_agent_state_change_seq,
+            previous_state_change_seq
+        );
+        let events = event_hub.events_after(event_sequence);
+        assert!(events.iter().any(|(_, event)| matches!(
+            &event.data,
+            crate::api::schema::EventData::PaneUpdated { pane }
+                if pane.background_work && pane.revision == after.revision
+        )));
+        assert!(!events.iter().any(|(_, event)| matches!(
+            event.event,
+            crate::api::schema::EventKind::PaneAgentStatusChanged
+        )));
     }
 
     #[test]
@@ -2012,6 +2093,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: true,
             observed_at,
         });
@@ -2185,6 +2267,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: true,
             observed_at: std::time::Instant::now(),
         });
@@ -2251,6 +2334,7 @@ mod tests {
             state: AgentState::Working,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -2271,6 +2355,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });

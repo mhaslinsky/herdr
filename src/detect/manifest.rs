@@ -34,6 +34,7 @@ pub struct DetectionExplain {
     pub visible_idle: bool,
     pub visible_blocker: bool,
     pub visible_working: bool,
+    pub background_work: bool,
     pub skip_state_update: bool,
     pub skipped_update_reason: Option<String>,
     pub fallback_reason: Option<String>,
@@ -96,6 +97,7 @@ pub struct MatchedRule {
     pub priority: i32,
     pub region: String,
     pub state: AgentState,
+    pub background_work: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,6 +107,8 @@ pub struct EvaluatedRule {
     pub region: String,
     pub evidence: RuleEvidence,
     pub state: AgentState,
+    pub background_work: bool,
+    pub skip_state_update: bool,
     pub matched: bool,
 }
 
@@ -164,6 +168,7 @@ struct ManifestRule {
     visible_blocker: bool,
     #[serde(default)]
     visible_working: bool,
+    background_work: Option<bool>,
     #[serde(default)]
     skip_state_update: bool,
     #[serde(default)]
@@ -333,7 +338,7 @@ pub fn detect(agent: Agent, screen_content: &str) -> AgentDetection {
 
 pub fn detect_with_osc(agent: Agent, input: DetectionInput<'_>) -> AgentDetection {
     let Some(loaded) = load_manifest(agent) else {
-        return fallback_explain(Some(agent), None, false).into_detection();
+        return fallback_explain(Some(agent), None, false, false).into_detection();
     };
     evaluate_loaded_manifest(agent, input, loaded, false).into_detection()
 }
@@ -351,7 +356,7 @@ pub fn explain(agent: Agent, screen_content: &str) -> DetectionExplain {
 
 pub fn explain_with_input(agent: Agent, input: DetectionInput<'_>) -> DetectionExplain {
     let Some(loaded) = load_manifest(agent) else {
-        return fallback_explain(Some(agent), None, true);
+        return fallback_explain(Some(agent), None, true, false);
     };
     evaluate_loaded_manifest(agent, input, loaded, true)
 }
@@ -367,6 +372,7 @@ pub fn explain_for_label(agent_label: &str, screen_content: &str) -> DetectionEx
             visible_idle: false,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             skip_state_update: false,
             skipped_update_reason: None,
             fallback_reason: Some("unknown_agent".to_string()),
@@ -382,23 +388,6 @@ pub fn explain_for_label(agent_label: &str, screen_content: &str) -> DetectionEx
     explain(agent, screen_content)
 }
 
-pub fn should_skip_state_update(agent: Agent, screen_content: &str) -> bool {
-    let Some(loaded) = load_manifest(agent) else {
-        return false;
-    };
-    evaluate_loaded_manifest(
-        agent,
-        DetectionInput {
-            screen: screen_content,
-            osc_title: "",
-            osc_progress: "",
-        },
-        loaded,
-        false,
-    )
-    .skip_state_update
-}
-
 impl DetectionExplain {
     fn into_detection(self) -> AgentDetection {
         AgentDetection {
@@ -407,6 +396,7 @@ impl DetectionExplain {
             visible_idle: self.visible_idle,
             visible_blocker: self.visible_blocker,
             visible_working: self.visible_working,
+            background_work: self.background_work,
         }
     }
 }
@@ -418,6 +408,7 @@ fn evaluate_loaded_manifest(
     include_update_status: bool,
 ) -> DetectionExplain {
     let mut matched: Option<(&ManifestRule, String)> = None;
+    let mut background_work = false;
     let mut evaluated_rules = Vec::new();
 
     for (rule, compiled_rule) in loaded.manifest.rules.iter().zip(&loaded.compiled_rules) {
@@ -432,10 +423,20 @@ fn evaluate_loaded_manifest(
                 .state
                 .map(AgentState::from)
                 .unwrap_or(AgentState::Unknown),
+            background_work: rule.background_work.unwrap_or(false),
+            skip_state_update: rule.skip_state_update,
             matched: matched_rule,
         });
 
         if !matched_rule {
+            continue;
+        }
+
+        if rule.background_work.unwrap_or(false) && !rule.skip_state_update {
+            background_work = true;
+        }
+
+        if rule.state.is_none() {
             continue;
         }
 
@@ -450,6 +451,7 @@ fn evaluate_loaded_manifest(
             Some(agent),
             Some((loaded, evaluated_rules)),
             include_update_status,
+            background_work,
         );
     };
 
@@ -474,11 +476,13 @@ fn evaluate_loaded_manifest(
             priority: rule.priority,
             region: region_name,
             state,
+            background_work: rule.background_work.unwrap_or(false),
         }),
         screen_detection_skipped: false,
         visible_idle: rule.visible_idle && state == AgentState::Idle,
         visible_blocker: rule.visible_blocker && state == AgentState::Blocked,
         visible_working: rule.visible_working && state == AgentState::Working,
+        background_work,
         skip_state_update: rule.skip_state_update,
         skipped_update_reason,
         fallback_reason: None,
@@ -498,6 +502,7 @@ fn fallback_explain(
     agent: Option<Agent>,
     context: Option<(LoadedManifest, Vec<EvaluatedRule>)>,
     include_update_status: bool,
+    background_work: bool,
 ) -> DetectionExplain {
     let (
         source,
@@ -536,6 +541,7 @@ fn fallback_explain(
         visible_idle: false,
         visible_blocker: false,
         visible_working: false,
+        background_work,
         skip_state_update: false,
         skipped_update_reason: None,
         fallback_reason: known_agent.then(|| DEFAULT_KNOWN_AGENT_IDLE_FALLBACK.to_string()),
@@ -803,6 +809,7 @@ pub fn explain_to_json_value(explain: &DetectionExplain) -> serde_json::Value {
             "priority": rule.priority,
             "region": rule.region,
             "state": agent_state_label(rule.state),
+            "background_work": rule.background_work,
         })
     });
     let evaluated_rules: Vec<_> = explain
@@ -814,6 +821,8 @@ pub fn explain_to_json_value(explain: &DetectionExplain) -> serde_json::Value {
                 "priority": rule.priority,
                 "region": rule.region,
                 "state": agent_state_label(rule.state),
+                "background_work": rule.background_work,
+                "skip_state_update": rule.skip_state_update,
                 "matched": rule.matched,
                 "evidence": {
                     "contains": &rule.evidence.contains,
@@ -827,6 +836,12 @@ pub fn explain_to_json_value(explain: &DetectionExplain) -> serde_json::Value {
                 },
             })
         })
+        .collect();
+    let background_work_rules: Vec<_> = explain
+        .evaluated_rules
+        .iter()
+        .filter(|rule| rule.matched && rule.background_work && !rule.skip_state_update)
+        .map(|rule| rule.id.as_str())
         .collect();
 
     serde_json::json!({
@@ -842,6 +857,8 @@ pub fn explain_to_json_value(explain: &DetectionExplain) -> serde_json::Value {
         "visible_idle": explain.visible_idle,
         "visible_blocker": explain.visible_blocker,
         "visible_working": explain.visible_working,
+        "background_work": explain.background_work,
+        "background_work_rules": background_work_rules,
         "screen_detection_skipped": explain.screen_detection_skipped,
         "skip_state_update": explain.skip_state_update,
         "skipped_update_reason": explain.skipped_update_reason,
@@ -930,6 +947,16 @@ fn validate_manifest(manifest: &AgentManifest) -> Result<(), String> {
             return Err(format!(
                 "rule {} uses top_non_empty_lines but min_engine_version is below {}",
                 rule.id, TOP_NON_EMPTY_LINES_ENGINE_VERSION
+            ));
+        }
+        if rule.background_work.is_some()
+            && manifest
+                .min_engine_version
+                .is_some_and(|version| version < BACKGROUND_WORK_ENGINE_VERSION)
+        {
+            return Err(format!(
+                "rule {} uses background_work but min_engine_version is below {}",
+                rule.id, BACKGROUND_WORK_ENGINE_VERSION
             ));
         }
         validate_rule_gate(rule, &mut complexity)
@@ -1299,6 +1326,7 @@ fn region_count(spec: &str, name: &str) -> Option<usize> {
 }
 
 const TOP_NON_EMPTY_LINES_ENGINE_VERSION: u32 = 3;
+const BACKGROUND_WORK_ENGINE_VERSION: u32 = 4;
 const MAX_TOP_REGION_LINE_COUNT: usize = u16::MAX as usize;
 
 fn top_region_count(spec: &str) -> Option<usize> {

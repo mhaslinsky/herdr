@@ -155,6 +155,9 @@ fn agent_explain(args: &[String]) -> std::io::Result<i32> {
 fn print_agent_explain_text(explain: &serde_json::Value, verbose: bool) {
     println!("agent: {}", explain["agent"].as_str().unwrap_or("unknown"));
     println!("state: {}", explain["state"].as_str().unwrap_or("unknown"));
+    let (background_work, background_work_rules) = background_work_explain_text(explain);
+    println!("background_work: {background_work}");
+    println!("background_work_rules: {background_work_rules}");
     println!(
         "manifest: {} {}",
         explain["manifest_source"].as_str().unwrap_or("none"),
@@ -227,7 +230,7 @@ fn print_agent_explain_text(explain: &serde_json::Value, verbose: bool) {
         println!("evaluated_rules:");
         for rule in evaluated_rules {
             println!(
-                "  {} {} priority={} region={} state={}",
+                "  {} {} priority={} region={} state={} background_work={}",
                 if rule["matched"].as_bool().unwrap_or(false) {
                     "✓"
                 } else {
@@ -236,7 +239,8 @@ fn print_agent_explain_text(explain: &serde_json::Value, verbose: bool) {
                 rule["id"].as_str().unwrap_or("-"),
                 rule["priority"].as_i64().unwrap_or(0),
                 rule["region"].as_str().unwrap_or("-"),
-                rule["state"].as_str().unwrap_or("unknown")
+                rule["state"].as_str().unwrap_or("unknown"),
+                rule["background_work"].as_bool().unwrap_or(false)
             );
             let evidence = &rule["evidence"];
             println!(
@@ -255,6 +259,29 @@ fn print_agent_explain_text(explain: &serde_json::Value, verbose: bool) {
             );
         }
     }
+}
+
+fn background_work_explain_text(explain: &serde_json::Value) -> (String, String) {
+    if explain["screen_detection_skipped"].as_bool() == Some(true) {
+        return ("unavailable".to_string(), "unavailable".to_string());
+    }
+
+    let background_work = explain["background_work"]
+        .as_bool()
+        .unwrap_or(false)
+        .to_string();
+    let background_rules = explain["background_work_rules"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|rule| rule.as_str())
+        .collect::<Vec<_>>();
+    let background_work_rules = if background_rules.is_empty() {
+        "none".to_string()
+    } else {
+        background_rules.join(", ")
+    };
+    (background_work, background_work_rules)
 }
 
 fn matched_rule_region_preview<'a>(
@@ -820,4 +847,23 @@ fn parse_timeout(value: &str) -> Result<u64, i32> {
         eprintln!("{err}");
         2
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn skipped_screen_detection_reports_background_work_unavailable() {
+        let explain = serde_json::json!({
+            "screen_detection_skipped": true,
+            "background_work": null,
+            "background_work_rules": null,
+        });
+
+        assert_eq!(
+            background_work_explain_text(&explain),
+            ("unavailable".to_string(), "unavailable".to_string())
+        );
+    }
 }

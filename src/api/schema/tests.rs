@@ -29,6 +29,76 @@ fn rewrite_schema_refs(value: &mut serde_json::Value, schema_name: &str) {
     }
 }
 
+#[test]
+fn background_work_is_present_when_true_and_omitted_when_false() {
+    let mut pane = PaneInfo {
+        pane_id: "pane_1".into(),
+        terminal_id: "terminal_1".into(),
+        workspace_id: "workspace_1".into(),
+        tab_id: "tab_1".into(),
+        focused: true,
+        cwd: None,
+        foreground_cwd: None,
+        label: None,
+        agent: Some("codex".into()),
+        title: None,
+        terminal_title: None,
+        terminal_title_stripped: None,
+        display_agent: None,
+        agent_status: AgentStatus::Idle,
+        background_work: false,
+        state_labels: HashMap::new(),
+        tokens: HashMap::new(),
+        agent_session: None,
+        scroll: None,
+        revision: 1,
+    };
+    assert!(serde_json::to_value(&pane)
+        .unwrap()
+        .get("background_work")
+        .is_none());
+    pane.background_work = true;
+    assert_eq!(
+        serde_json::to_value(&pane).unwrap()["background_work"],
+        true
+    );
+
+    let mut agent = AgentInfo {
+        terminal_id: "terminal_1".into(),
+        name: None,
+        agent: Some("codex".into()),
+        title: None,
+        terminal_title: None,
+        terminal_title_stripped: None,
+        display_agent: None,
+        agent_status: AgentStatus::Idle,
+        background_work: false,
+        screen_detection_skipped: false,
+        state_labels: HashMap::new(),
+        tokens: HashMap::new(),
+        agent_session: None,
+        workspace_id: "workspace_1".into(),
+        tab_id: "tab_1".into(),
+        pane_id: "pane_1".into(),
+        focused: true,
+        launch_pending: false,
+        interactive_ready: true,
+        state_change_seq: 2,
+        cwd: None,
+        foreground_cwd: None,
+        revision: 1,
+    };
+    assert!(serde_json::to_value(&agent)
+        .unwrap()
+        .get("background_work")
+        .is_none());
+    agent.background_work = true;
+    assert_eq!(
+        serde_json::to_value(&agent).unwrap()["background_work"],
+        true
+    );
+}
+
 fn protocol_schema_document() -> serde_json::Value {
     serde_json::json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -744,6 +814,7 @@ fn worktree_request_and_response_round_trip() {
                 terminal_title_stripped: None,
                 display_agent: None,
                 agent_status: AgentStatus::Unknown,
+                background_work: false,
                 state_labels: HashMap::new(),
                 tokens: HashMap::new(),
                 agent_session: None,
@@ -1172,6 +1243,7 @@ fn create_response_round_trips_with_root_pane() {
                 terminal_title_stripped: None,
                 display_agent: None,
                 agent_status: AgentStatus::Unknown,
+                background_work: false,
                 state_labels: HashMap::new(),
                 tokens: HashMap::new(),
                 agent_session: None,

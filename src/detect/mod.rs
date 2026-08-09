@@ -36,6 +36,9 @@ pub struct AgentDetection {
     /// activity is the normal working authority; this remains diagnostic
     /// metadata and for non-PTY fallback paths.
     pub visible_working: bool,
+    /// Whether matched manifest rules report outstanding background work.
+    /// This signal is orthogonal to `state`.
+    pub background_work: bool,
 }
 
 /// Which agent we detected running in a pane.
@@ -270,6 +273,7 @@ pub fn detect_agent_with_osc(
             visible_idle: false,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
         };
     };
     manifest::detect_with_osc(
@@ -280,10 +284,6 @@ pub fn detect_agent_with_osc(
             osc_progress,
         },
     )
-}
-
-pub fn should_skip_state_update(agent: Option<Agent>, screen_content: &str) -> bool {
-    agent.is_some_and(|agent| manifest::should_skip_state_update(agent, screen_content))
 }
 
 pub(crate) fn full_lifecycle_hook_authority(source: &str, agent_label: &str) -> bool {

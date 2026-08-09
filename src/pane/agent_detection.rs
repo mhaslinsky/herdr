@@ -18,6 +18,7 @@ pub(super) struct DetectionPublishState {
     pub(super) visible_idle: bool,
     pub(super) visible_blocker: bool,
     pub(super) visible_working: bool,
+    pub(super) background_work: bool,
 }
 
 #[derive(Debug, Default)]
@@ -148,6 +149,7 @@ pub(super) fn should_publish_detection_update(
         || next.visible_idle != previous.visible_idle
         || next.visible_blocker != previous.visible_blocker
         || next.visible_working != previous.visible_working
+        || next.background_work != previous.background_work
         || agent_changed
         || process_exited
         || (stable_visible_signal_refresh_due && next.visible_blocker && previous.visible_blocker)
@@ -218,6 +220,7 @@ pub(super) enum DetectionPublishDecision {
         visible_idle: bool,
         visible_blocker: bool,
         visible_working: bool,
+        background_work: bool,
         process_exited: bool,
     },
 }
@@ -228,6 +231,7 @@ pub(super) struct ScreenDetectionPublishInput {
     pub(super) last_visible_idle: bool,
     pub(super) last_visible_blocker: bool,
     pub(super) last_visible_working: bool,
+    pub(super) last_background_work: bool,
     pub(super) last_visible_signal_refresh: Option<std::time::Instant>,
     pub(super) screen_detection: AgentDetection,
     pub(super) process_exited: bool,
@@ -240,6 +244,22 @@ pub(super) fn decide_screen_detection_publish(
     pending_idle: &mut PendingIdleConfirmation,
 ) -> DetectionPublishDecision {
     let detection = input.screen_detection;
+    if detection.skip_state_update {
+        pending_idle.clear();
+        return if detection.background_work == input.last_background_work {
+            DetectionPublishDecision::NoPublish
+        } else {
+            DetectionPublishDecision::Publish {
+                state: input.current_state,
+                visible_idle: input.last_visible_idle,
+                visible_blocker: input.last_visible_blocker,
+                visible_working: input.last_visible_working,
+                background_work: detection.background_work,
+                process_exited: false,
+            }
+        };
+    }
+
     let new_state = crate::terminal::state::stabilize_agent_detection(detection);
     let visible_idle = detection.visible_idle && new_state == AgentState::Idle;
     let visible_blocker = detection.visible_blocker && new_state == AgentState::Blocked;
@@ -250,12 +270,14 @@ pub(super) fn decide_screen_detection_publish(
         visible_idle: input.last_visible_idle,
         visible_blocker: input.last_visible_blocker,
         visible_working: input.last_visible_working,
+        background_work: input.last_background_work,
     };
     let next_publish = DetectionPublishState {
         state: new_state,
         visible_idle,
         visible_blocker,
         visible_working,
+        background_work: detection.background_work,
     };
     let stable_refresh_due = stable_visible_signal_refresh_due(
         previous_publish,
@@ -281,6 +303,7 @@ pub(super) fn decide_screen_detection_publish(
             visible_idle,
             visible_blocker,
             visible_working,
+            background_work: detection.background_work,
             process_exited: input.process_exited,
         },
     }
@@ -291,7 +314,7 @@ pub(super) fn detection_update_for_publish(
     agent: Option<Agent>,
     content: &str,
     process_exited: bool,
-) -> Option<crate::detect::AgentDetection> {
+) -> crate::detect::AgentDetection {
     detection_update_for_publish_with_osc(agent, content, "", "", process_exited)
 }
 
@@ -301,19 +324,19 @@ pub(super) fn detection_update_for_publish_with_osc(
     osc_title: &str,
     osc_progress: &str,
     process_exited: bool,
-) -> Option<crate::detect::AgentDetection> {
+) -> crate::detect::AgentDetection {
     if process_exited {
-        return Some(crate::detect::AgentDetection {
+        return crate::detect::AgentDetection {
             state: AgentState::Idle,
             skip_state_update: false,
             visible_idle: true,
             visible_blocker: false,
             visible_working: false,
-        });
+            background_work: false,
+        };
     }
 
-    let detection = crate::detect::detect_agent_with_osc(agent, content, osc_title, osc_progress);
-    (!detection.skip_state_update).then_some(detection)
+    crate::detect::detect_agent_with_osc(agent, content, osc_title, osc_progress)
 }
 
 pub(super) fn observe_detection_content_change(bytes: &[u8], detection_content_seq: &AtomicU64) {
@@ -336,6 +359,7 @@ mod tests {
             visible_idle: false,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
         }
     }
 
@@ -346,6 +370,7 @@ mod tests {
             visible_idle: state == AgentState::Idle,
             visible_blocker: false,
             visible_working: state == AgentState::Working,
+            background_work: false,
         }
     }
 
@@ -359,6 +384,7 @@ mod tests {
             last_visible_idle: false,
             last_visible_blocker: false,
             last_visible_working: false,
+            last_background_work: false,
             last_visible_signal_refresh: None,
             screen_detection,
             process_exited: false,
@@ -492,6 +518,30 @@ mod tests {
     }
 
     #[test]
+    fn transition_decision_publishes_background_only_change() {
+        let now = std::time::Instant::now();
+        let mut pending_idle = PendingIdleConfirmation::default();
+        let previous = publish_state(AgentState::Idle);
+        let mut next = previous;
+        next.background_work = true;
+
+        assert_eq!(
+            decide_detection_transition(
+                DetectionTransitionInput {
+                    previous_publish: previous,
+                    next_publish: next,
+                    agent_changed: false,
+                    process_exited: false,
+                    stable_refresh_due: false,
+                    now,
+                },
+                &mut pending_idle,
+            ),
+            DetectionTransitionDecision::PublishNext
+        );
+    }
+
+    #[test]
     fn screen_publish_keeps_visible_working_without_pty_activity() {
         let now = std::time::Instant::now();
         let mut pending_idle = PendingIdleConfirmation::default();
@@ -506,6 +556,7 @@ mod tests {
                 visible_idle: false,
                 visible_blocker: false,
                 visible_working: true,
+                background_work: false,
                 process_exited: false,
             }
         );
@@ -526,8 +577,79 @@ mod tests {
                 visible_idle: true,
                 visible_blocker: false,
                 visible_working: false,
+                background_work: false,
                 process_exited: false,
             }
+        );
+    }
+
+    #[test]
+    fn process_exit_overrides_skip_state_content() {
+        let content = "• Working (4s • esc to interrupt)\n\
+            › transcript\n\
+            ↑/↓ to scroll · pgup/pgdn to move · home/end to jump · q to quit · esc to edit prev\n";
+
+        let detection = detection_update_for_publish(Some(Agent::Codex), content, true);
+
+        assert_eq!(detection.state, AgentState::Idle);
+        assert!(!detection.skip_state_update);
+        assert!(!detection.background_work);
+    }
+
+    #[test]
+    fn skip_state_detection_publishes_only_background_work() {
+        let now = std::time::Instant::now();
+        let mut pending_idle = PendingIdleConfirmation::default();
+        let mut input = screen_publish_input(
+            AgentState::Working,
+            AgentDetection {
+                state: AgentState::Unknown,
+                skip_state_update: true,
+                visible_idle: false,
+                visible_blocker: false,
+                visible_working: false,
+                background_work: true,
+            },
+            now,
+        );
+        input.last_visible_working = true;
+
+        assert_eq!(
+            decide_screen_detection_publish(input, &mut pending_idle),
+            DetectionPublishDecision::Publish {
+                state: AgentState::Working,
+                visible_idle: false,
+                visible_blocker: false,
+                visible_working: true,
+                background_work: true,
+                process_exited: false,
+            }
+        );
+    }
+
+    #[test]
+    fn skip_state_detection_without_background_edge_does_not_publish() {
+        let now = std::time::Instant::now();
+        let mut pending_idle = PendingIdleConfirmation::default();
+        let mut input = screen_publish_input(
+            AgentState::Working,
+            AgentDetection {
+                state: AgentState::Unknown,
+                skip_state_update: true,
+                visible_idle: false,
+                visible_blocker: false,
+                visible_working: false,
+                background_work: false,
+            },
+            now,
+        );
+        input.agent_changed = true;
+        input.last_visible_blocker = true;
+        input.last_visible_signal_refresh = Some(now - STABLE_VISIBLE_SIGNAL_REFRESH);
+
+        assert_eq!(
+            decide_screen_detection_publish(input, &mut pending_idle),
+            DetectionPublishDecision::NoPublish
         );
     }
 

@@ -902,6 +902,7 @@ mod tests {
             terminal_title_stripped: None,
             display_agent: None,
             agent_status,
+            background_work: false,
             state_labels: HashMap::new(),
             tokens: HashMap::new(),
             agent_session: None,

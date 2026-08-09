@@ -731,6 +731,8 @@ If no native session reference is stored, the field is omitted.
 
 `PaneInfo` and `AgentInfo` expose optional `terminal_title` and `terminal_title_stripped` fields. `terminal_title` is the latest OSC 0/2 title after safety normalization. `terminal_title_stripped` removes one recognized leading activity or spinner glyph and following whitespace. These server-owned values are ephemeral across a cold restart and are independent of the metadata `title` and semantic agent state.
 
+`PaneInfo` and `AgentInfo` expose `background_work: true` when manifest detection finds outstanding background work. The field is omitted when false. It is orthogonal to `agent_status`, so idle, working, and blocked agents can all report background work without changing status. A background-only edge increments the pane `revision` and emits `pane.updated`; it does not emit `pane.agent_status_changed` or advance `state_change_seq`.
+
 Use `pane.report_metadata` when a user hook wants to customize presentation without taking over lifecycle state from a Herdr integration.
 
 ```json
@@ -899,7 +901,7 @@ Fields such as `last_check_unix`, `last_result`, `active_version`, `cached_remot
 }
 ```
 
-The response contains the same explain object printed by `herdr agent explain --json`, including the final state, manifest source and version, matched rule, evaluated rule evidence, skip-state reason, idle fallback reason, and `screen_detection_skip_reason` when a full lifecycle hook authority makes screen rules non-authoritative.
+The response contains the same explain object printed by `herdr agent explain --json`, including the final state, background-work signal and contributing rules, manifest source and version, matched rule, evaluated rule evidence, skip-state reason, idle fallback reason, and `screen_detection_skip_reason` when a full lifecycle hook authority makes screen rules non-authoritative.
 
 Clients need a running server that supports `agent.explain`; after upgrading Herdr, restart or live-handoff the server before relying on this method.
 
