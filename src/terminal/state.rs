@@ -98,6 +98,7 @@ pub struct TerminalStateMutation {
     pub effective_state_change: Option<EffectiveStateChange>,
     pub session_ref_changed: bool,
     pub agent_released: bool,
+    pub background_work_changed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,6 +124,8 @@ pub struct TerminalState {
     pub detected_agent: Option<Agent>,
     pub fallback_state: AgentState,
     fallback_visible_blocker: bool,
+    /// Detection-sourced background work, independent of semantic agent state.
+    pub background_work: bool,
     fallback_observed_at: Option<Instant>,
     pub hook_authority: Option<HookAuthority>,
     pub agent_metadata: HashMap<String, AgentMetadata>,
@@ -158,6 +161,7 @@ impl TerminalState {
             detected_agent: None,
             fallback_state: AgentState::Unknown,
             fallback_visible_blocker: false,
+            background_work: false,
             fallback_observed_at: None,
             hook_authority: None,
             agent_metadata: HashMap::new(),
@@ -321,12 +325,39 @@ impl TerminalState {
         process_exited: bool,
         now: Instant,
     ) -> TerminalStateMutation {
+        self.set_detected_state_with_background_work_at(
+            agent,
+            fallback_state,
+            visible_blocker,
+            false,
+            false,
+            false,
+            process_exited,
+            now,
+        )
+    }
+
+    pub fn set_detected_state_with_background_work_at(
+        &mut self,
+        agent: Option<Agent>,
+        fallback_state: AgentState,
+        visible_blocker: bool,
+        _visible_idle: bool,
+        _visible_working: bool,
+        background_work: bool,
+        process_exited: bool,
+        now: Instant,
+    ) -> TerminalStateMutation {
         let previous_agent_label = self.effective_agent_label().map(str::to_string);
         let previous_known_agent = self.effective_known_agent();
         let previous_state = self.state;
         let previous_presentation = self.effective_presentation_for_state_at(previous_state, now);
         let previous_detected_agent = self.detected_agent;
         let previous_session = self.current_session_identity_for_persistence();
+        let mut background_work_changed = false;
+        if process_exited {
+            background_work_changed = self.set_detection_background_work(false);
+        }
         let newer_custom_authority = process_exited
             && self.hook_authority.as_ref().is_some_and(|authority| {
                 crate::detect::parse_agent_label(&authority.agent_label) == agent
@@ -359,6 +390,7 @@ impl TerminalState {
                 session_ref_changed: previous_session
                     != self.current_session_identity_for_persistence(),
                 agent_released: false,
+                background_work_changed,
             };
         }
         let replacement_process_detected = !process_exited
@@ -378,8 +410,10 @@ impl TerminalState {
                 session_ref_changed: previous_session
                     != self.current_session_identity_for_persistence(),
                 agent_released: false,
+                background_work_changed,
             };
         }
+        background_work_changed |= self.set_detection_background_work(background_work);
         self.detected_agent = agent;
         if let Some(agent) = agent {
             let agent_label = crate::detect::agent_label(agent);
@@ -588,7 +622,17 @@ impl TerminalState {
             session_ref_changed: previous_session
                 != self.current_session_identity_for_persistence(),
             agent_released,
+            background_work_changed,
         }
+    }
+
+    fn set_detection_background_work(&mut self, background_work: bool) -> bool {
+        if self.background_work == background_work {
+            return false;
+        }
+        self.background_work = background_work;
+        self.revision = self.revision.wrapping_add(1);
+        true
     }
 
     #[cfg(test)]
@@ -734,6 +778,8 @@ impl TerminalState {
             reported_at: now,
             session_ref,
         });
+        let background_work_changed =
+            self.live_full_lifecycle_hook_authority() && self.set_detection_background_work(false);
         let current_session = self.current_session_identity_for_persistence();
         Some(TerminalStateMutation {
             effective_state_change: self.recompute_effective_state(
@@ -745,6 +791,7 @@ impl TerminalState {
             ),
             session_ref_changed: previous_session != current_session,
             agent_released: false,
+            background_work_changed,
         })
     }
 
@@ -1513,6 +1560,7 @@ impl TerminalState {
                     ),
                     session_ref_changed: previous_session != current_session,
                     agent_released: false,
+                    background_work_changed: false,
                 });
             }
             return None;
@@ -1617,6 +1665,7 @@ impl TerminalState {
             ),
             session_ref_changed: previous_session != current_session,
             agent_released: false,
+            background_work_changed: false,
         })
     }
 
@@ -1734,6 +1783,7 @@ impl TerminalState {
             ),
             session_ref_changed: previous_session.is_some(),
             agent_released: false,
+            background_work_changed: false,
         })
     }
 
@@ -1799,6 +1849,7 @@ impl TerminalState {
             ),
             session_ref_changed: previous_session != current_session,
             agent_released: !process_owns_agent,
+            background_work_changed: false,
         })
     }
 
@@ -2074,6 +2125,7 @@ impl TerminalState {
         self.detected_agent = None;
         self.fallback_state = AgentState::Unknown;
         self.fallback_visible_blocker = false;
+        self.set_detection_background_work(false);
         self.fallback_observed_at = None;
         self.hook_authority = None;
         self.persisted_agent_session = None;
@@ -2312,6 +2364,7 @@ mod tests {
             visible_idle: false,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
         };
 
         assert_eq!(stabilize_agent_detection(detection), AgentState::Idle);
@@ -2340,6 +2393,45 @@ mod tests {
         assert_eq!(terminal.fallback_state, AgentState::Idle);
         assert_eq!(terminal.effective_agent_label(), Some("pi"));
         assert_eq!(terminal.state, AgentState::Working);
+    }
+
+    #[test]
+    fn full_lifecycle_hook_takeover_clears_detected_background_work() {
+        let mut terminal = test_terminal();
+        let session_ref =
+            crate::agent_resume::AgentSessionRef::path(test_session_path("pi.jsonl")).unwrap();
+        terminal.set_detected_state_with_background_work_at(
+            Some(Agent::Pi),
+            AgentState::Working,
+            false,
+            false,
+            false,
+            true,
+            false,
+            Instant::now(),
+        );
+        terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
+            source: "herdr:pi".into(),
+            agent: "pi".into(),
+            session_ref: session_ref.clone(),
+        });
+        let revision_before_takeover = terminal.revision;
+
+        let mutation = terminal
+            .set_hook_authority_with_session_ref(
+                "herdr:pi".into(),
+                "pi".into(),
+                AgentState::Working,
+                None,
+                Some(session_ref),
+                Some(1),
+            )
+            .expect("full-lifecycle hook report should be accepted");
+
+        assert!(terminal.full_lifecycle_hook_authority_active());
+        assert!(mutation.background_work_changed);
+        assert!(!terminal.background_work);
+        assert_eq!(terminal.revision, revision_before_takeover.wrapping_add(1));
     }
 
     #[test]
@@ -5685,7 +5777,16 @@ mod tests {
             agent: "pi".into(),
             session_ref: session_ref.clone(),
         });
-        terminal.set_detected_state(Some(Agent::Pi), AgentState::Working);
+        terminal.set_detected_state_with_background_work_at(
+            Some(Agent::Pi),
+            AgentState::Working,
+            false,
+            false,
+            false,
+            true,
+            false,
+            std::time::Instant::now(),
+        );
 
         let mutation = terminal.set_detected_state_with_screen_signals_at(
             Some(Agent::Pi),
@@ -5699,6 +5800,7 @@ mod tests {
 
         assert!(mutation.session_ref_changed);
         assert!(terminal.persisted_agent_session.is_none());
+        assert!(!terminal.background_work);
 
         let delayed = terminal.set_agent_session_ref(
             "herdr:pi".into(),
@@ -5750,8 +5852,17 @@ mod tests {
             agent: "codex".into(),
             session_ref: crate::agent_resume::AgentSessionRef::id("codex-session").unwrap(),
         });
-        terminal.set_detected_state(Some(Agent::Codex), AgentState::Idle);
         terminal.set_detected_agent_process_at(Agent::Codex, Instant::now());
+        terminal.set_detected_state_with_background_work_at(
+            Some(Agent::Codex),
+            AgentState::Idle,
+            false,
+            false,
+            false,
+            true,
+            false,
+            std::time::Instant::now(),
+        );
 
         terminal.clear_agent_runtime_identity_after_respawn();
 
@@ -5761,6 +5872,14 @@ mod tests {
         assert!(terminal.persisted_agent_session.is_none());
         assert!(!terminal.respawn_shell_on_exit);
         assert!(!terminal.finish_agent_process_acquisition());
+        assert!(!terminal.background_work);
+    }
+
+    #[test]
+    fn replacement_terminal_defaults_background_work_false() {
+        let terminal = test_terminal();
+
+        assert!(!terminal.background_work);
     }
 
     #[test]

@@ -251,6 +251,7 @@ pub struct PaneStateUpdate {
     pub agent_released: bool,
     pub agent_release_status: Option<crate::api::schema::AgentStatus>,
     pub suppress_completion: bool,
+    pub background_work_changed: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -394,6 +395,7 @@ impl AppState {
                     agent_released: false,
                     agent_release_status: None,
                     suppress_completion: false,
+                    background_work_changed: false,
                 };
                 Some(update)
             })
@@ -1650,16 +1652,18 @@ impl AppState {
                 state,
                 visible_blocker,
                 visible_working,
+                background_work,
                 process_exited,
                 observed_at,
             } => self
                 .update_terminal_state(pane_id, |terminal| {
-                    Some(terminal.set_detected_state_with_screen_signals_at(
+                    Some(terminal.set_detected_state_with_background_work_at(
                         agent,
                         state,
                         visible_blocker,
                         false,
                         visible_working,
+                        background_work,
                         process_exited,
                         observed_at,
                     ))
@@ -1852,8 +1856,9 @@ impl AppState {
             let managed_changed = terminal.reconcile_managed_agent_at(now, false);
             let suppress_acquisition_completion = terminal.finish_agent_process_acquisition();
             let agent_name_changed = terminal.agent_name != previous_agent_name;
-            let unchanged_change = (mutation.agent_released || agent_name_changed)
-                .then(|| terminal.unchanged_effective_state_change_at(now));
+            let unchanged_change =
+                (mutation.agent_released || agent_name_changed || mutation.background_work_changed)
+                    .then(|| terminal.unchanged_effective_state_change_at(now));
             (
                 mutation,
                 managed_changed,
@@ -1866,6 +1871,11 @@ impl AppState {
         if mutation.session_ref_changed || managed_changed || agent_name_changed {
             self.mark_session_dirty();
         }
+        let background_only_change = mutation.background_work_changed
+            && mutation.effective_state_change.is_none()
+            && !mutation.agent_released
+            && !managed_changed
+            && !agent_name_changed;
         let agent_released = mutation.agent_released;
         let change = mutation.effective_state_change.or(unchanged_change)?;
         let suppress_completion = force_suppress_completion
@@ -1877,7 +1887,11 @@ impl AppState {
                 terminal.last_agent_state_change_seq = Some(self.next_agent_state_change_seq);
             }
         }
-        let seen = self.apply_pane_state_change(ws_idx, pane_id, &change, suppress_completion)?;
+        let seen = if background_only_change {
+            self.workspaces[ws_idx].pane_state(pane_id)?.seen
+        } else {
+            self.apply_pane_state_change(ws_idx, pane_id, &change, suppress_completion)?
+        };
         let update = PaneStateUpdate {
             pane_id,
             ws_idx,
@@ -1903,6 +1917,7 @@ impl AppState {
             agent_released,
             agent_release_status: agent_released.then(|| pane_agent_status(change.state, seen)),
             suppress_completion,
+            background_work_changed: mutation.background_work_changed,
         };
         Some(update)
     }
@@ -2891,6 +2906,7 @@ mod tests {
             state: AgentState::Working,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -2929,6 +2945,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -2962,6 +2979,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -2984,6 +3002,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3005,6 +3024,7 @@ mod tests {
             state: AgentState::Unknown,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3014,6 +3034,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3041,6 +3062,7 @@ mod tests {
                 state: AgentState::Idle,
                 visible_blocker: false,
                 visible_working: false,
+                background_work: false,
                 process_exited: false,
                 observed_at: Instant::now(),
             })
@@ -3060,6 +3082,7 @@ mod tests {
                 state: agent_state,
                 visible_blocker: agent_state == AgentState::Blocked,
                 visible_working: agent_state == AgentState::Working,
+                background_work: false,
                 process_exited: false,
                 observed_at: Instant::now(),
             });
@@ -3071,6 +3094,7 @@ mod tests {
                 state: AgentState::Idle,
                 visible_blocker: false,
                 visible_working: false,
+                background_work: false,
                 process_exited: false,
                 observed_at: Instant::now(),
             })
@@ -3095,6 +3119,7 @@ mod tests {
             state: AgentState::Working,
             visible_blocker: false,
             visible_working: true,
+            background_work: false,
             process_exited: false,
             observed_at: Instant::now(),
         });
@@ -3105,6 +3130,7 @@ mod tests {
                 state: AgentState::Idle,
                 visible_blocker: false,
                 visible_working: false,
+                background_work: false,
                 process_exited: true,
                 observed_at: Instant::now(),
             })
@@ -3150,6 +3176,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3174,6 +3201,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3193,6 +3221,46 @@ mod tests {
     }
 
     #[test]
+    fn background_only_edge_preserves_delayed_notification() {
+        let mut state = app_with_workspaces(&["active", "background"]);
+        state.active = Some(0);
+        state.toast_config.delivery = crate::config::ToastDelivery::Herdr;
+        state.toast_config.delay_seconds = 1;
+        let background_pane_id = *state.workspaces[1].panes.keys().next().unwrap();
+
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id: background_pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Blocked,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: false,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+        let original_deadline = state.next_pending_agent_notification_deadline().unwrap();
+
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id: background_pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Blocked,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: true,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+
+        assert_eq!(
+            state.next_pending_agent_notification_deadline(),
+            Some(original_deadline)
+        );
+        let deliveries = state.drain_due_agent_notifications(original_deadline);
+        assert_eq!(deliveries.len(), 1);
+        assert_eq!(deliveries[0].kind, ToastKind::NeedsAttention);
+    }
+
+    #[test]
     fn delayed_background_waiting_cancels_when_agent_resumes_working() {
         let mut state = app_with_workspaces(&["active", "background"]);
         state.active = Some(0);
@@ -3206,6 +3274,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3217,6 +3286,7 @@ mod tests {
             state: AgentState::Working,
             visible_blocker: false,
             visible_working: true,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3240,6 +3310,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3265,6 +3336,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3292,6 +3364,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3348,6 +3421,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3366,6 +3440,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: true,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3396,6 +3471,7 @@ mod tests {
             state: AgentState::Working,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3419,6 +3495,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3445,6 +3522,7 @@ mod tests {
             state: AgentState::Working,
             visible_blocker: false,
             visible_working: true,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3505,6 +3583,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3637,6 +3716,7 @@ mod tests {
             state: AgentState::Idle,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3666,6 +3746,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3692,6 +3773,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3715,6 +3797,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -3736,6 +3819,7 @@ mod tests {
             state: AgentState::Blocked,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });

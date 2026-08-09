@@ -201,6 +201,7 @@ async fn publish_state_changed_event(
     state: AgentState,
     visible_blocker: bool,
     visible_working: bool,
+    background_work: bool,
     process_exited: bool,
     observed_at: std::time::Instant,
 ) {
@@ -214,6 +215,7 @@ async fn publish_state_changed_event(
             state,
             visible_blocker,
             visible_working,
+            background_work,
             process_exited,
             observed_at,
         })
@@ -255,9 +257,12 @@ struct AgentDetectionPublishUpdate {
     visible_idle: bool,
     visible_blocker: bool,
     visible_working: bool,
+    background_work: bool,
     process_exited: bool,
 }
 
+// The mutable arguments are the detector loop's deduplication trackers, kept together at call sites.
+#[allow(clippy::too_many_arguments)]
 async fn apply_agent_detection_publish_update(
     state_events: mpsc::Sender<AppEvent>,
     pane_id: PaneId,
@@ -268,6 +273,7 @@ async fn apply_agent_detection_publish_update(
     last_visible_idle: &mut bool,
     last_visible_blocker: &mut bool,
     last_visible_working: &mut bool,
+    last_background_work: &mut bool,
     last_visible_signal_refresh: &mut Option<std::time::Instant>,
     foreground_shell_exit_reported: &mut bool,
 ) {
@@ -275,6 +281,7 @@ async fn apply_agent_detection_publish_update(
     *last_visible_idle = update.visible_idle;
     *last_visible_blocker = update.visible_blocker;
     *last_visible_working = update.visible_working;
+    *last_background_work = update.background_work;
     *last_visible_signal_refresh = if update.visible_blocker || update.visible_working {
         Some(observed_at)
     } else {
@@ -290,6 +297,7 @@ async fn apply_agent_detection_publish_update(
         update.state,
         update.visible_blocker,
         update.visible_working,
+        update.background_work,
         update.process_exited,
         observed_at,
     )
@@ -717,6 +725,7 @@ fn spawn_basic_detection_task(
         let mut last_visible_idle = false;
         let mut last_visible_blocker = false;
         let mut last_visible_working = false;
+        let mut last_background_work = false;
         let mut last_visible_signal_refresh = None;
         let mut last_process_check = std::time::Instant::now();
         let mut last_foreground_pgid = None;
@@ -745,6 +754,7 @@ fn spawn_basic_detection_task(
                     last_visible_idle = false;
                     last_visible_blocker = false;
                     last_visible_working = false;
+                    last_background_work = false;
                     last_visible_signal_refresh = None;
                     last_process_check = std::time::Instant::now();
                     last_foreground_pgid = None;
@@ -858,6 +868,7 @@ fn spawn_basic_detection_task(
                             last_visible_idle = false;
                             last_visible_blocker = false;
                             last_visible_working = false;
+                            last_background_work = false;
                             last_visible_signal_refresh = None;
                             publish_agent_process_detected_event(
                                 state_events.clone(),
@@ -920,10 +931,6 @@ fn spawn_basic_detection_task(
             last_screen_scan_detection_content_seq = current_detection_content_seq;
             let content_changed = content != last_detection_text;
             last_detection_text.clone_from(&content);
-            if !process_exited && crate::detect::should_skip_state_update(agent, &content) {
-                pending_idle.clear();
-                continue;
-            }
             sync_content_change_acquisition(
                 agent_presence.current_agent(),
                 suppressed_agent,
@@ -936,16 +943,13 @@ fn spawn_basic_detection_task(
 
             let osc_title = terminal.agent_osc_title();
             let osc_progress = terminal.agent_osc_progress();
-            let Some(screen_detection) = detection_update_for_publish_with_osc(
+            let screen_detection = detection_update_for_publish_with_osc(
                 agent,
                 &content,
                 &osc_title,
                 &osc_progress,
                 process_exited,
-            ) else {
-                pending_idle.clear();
-                continue;
-            };
+            );
             match decide_screen_detection_publish(
                 ScreenDetectionPublishInput {
                     screen_detection,
@@ -953,6 +957,7 @@ fn spawn_basic_detection_task(
                     last_visible_idle,
                     last_visible_blocker,
                     last_visible_working,
+                    last_background_work,
                     last_visible_signal_refresh,
                     process_exited,
                     agent_changed,
@@ -966,6 +971,7 @@ fn spawn_basic_detection_task(
                     visible_idle,
                     visible_blocker,
                     visible_working,
+                    background_work,
                     process_exited: publish_process_exited,
                 } => {
                     apply_agent_detection_publish_update(
@@ -977,6 +983,7 @@ fn spawn_basic_detection_task(
                             visible_idle,
                             visible_blocker,
                             visible_working,
+                            background_work,
                             process_exited: publish_process_exited,
                         },
                         now,
@@ -984,6 +991,7 @@ fn spawn_basic_detection_task(
                         &mut last_visible_idle,
                         &mut last_visible_blocker,
                         &mut last_visible_working,
+                        &mut last_background_work,
                         &mut last_visible_signal_refresh,
                         &mut foreground_shell_exit_reported,
                     )
@@ -2441,6 +2449,7 @@ impl PaneRuntime {
                 let mut pending_restore_probe = initial_state.detected_agent.is_some();
                 let mut last_visible_blocker = false;
                 let mut last_visible_working = false;
+                let mut last_background_work = false;
                 let mut last_visible_signal_refresh = None;
                 let mut last_detection_text = String::new();
                 let mut last_screen_scan_detection_content_seq = None;
@@ -2479,6 +2488,7 @@ impl PaneRuntime {
                             pending_restore_probe = false;
                             last_visible_blocker = false;
                             last_visible_working = false;
+                            last_background_work = false;
                             last_visible_signal_refresh = None;
                             last_detection_text.clear();
                             last_screen_scan_detection_content_seq = None;
@@ -2625,6 +2635,7 @@ impl PaneRuntime {
                                         last_visible_idle = false;
                                         last_visible_blocker = false;
                                         last_visible_working = false;
+                                        last_background_work = false;
                                         last_visible_signal_refresh = None;
                                         publish_agent_process_detected_event(
                                             state_events.clone(),
@@ -2716,10 +2727,6 @@ impl PaneRuntime {
                     last_screen_scan_detection_content_seq = current_detection_content_seq;
                     let content_changed = content != last_detection_text;
                     last_detection_text.clone_from(&content);
-                    if detect::should_skip_state_update(agent, &content) {
-                        pending_idle.clear();
-                        continue;
-                    }
                     sync_content_change_acquisition(
                         agent_presence.current_agent(),
                         suppressed_agent,
@@ -2732,16 +2739,13 @@ impl PaneRuntime {
 
                     let osc_title = terminal.agent_osc_title();
                     let osc_progress = terminal.agent_osc_progress();
-                    let Some(screen_detection) = detection_update_for_publish_with_osc(
+                    let screen_detection = detection_update_for_publish_with_osc(
                         agent,
                         &content,
                         &osc_title,
                         &osc_progress,
                         process_exited,
-                    ) else {
-                        pending_idle.clear();
-                        continue;
-                    };
+                    );
                     match decide_screen_detection_publish(
                         ScreenDetectionPublishInput {
                             screen_detection,
@@ -2749,6 +2753,7 @@ impl PaneRuntime {
                             last_visible_idle,
                             last_visible_blocker,
                             last_visible_working,
+                            last_background_work,
                             last_visible_signal_refresh,
                             process_exited,
                             agent_changed,
@@ -2762,6 +2767,7 @@ impl PaneRuntime {
                             visible_idle,
                             visible_blocker,
                             visible_working,
+                            background_work,
                             process_exited: publish_process_exited,
                         } => {
                             apply_agent_detection_publish_update(
@@ -2773,6 +2779,7 @@ impl PaneRuntime {
                                     visible_idle,
                                     visible_blocker,
                                     visible_working,
+                                    background_work,
                                     process_exited: publish_process_exited,
                                 },
                                 now,
@@ -2780,6 +2787,7 @@ impl PaneRuntime {
                                 &mut last_visible_idle,
                                 &mut last_visible_blocker,
                                 &mut last_visible_working,
+                                &mut last_background_work,
                                 &mut last_visible_signal_refresh,
                                 &mut foreground_shell_exit_reported,
                             )
@@ -4908,6 +4916,7 @@ mod tests {
             false,
             false,
             false,
+            false,
             std::time::Instant::now(),
         );
         tokio::pin!(publish);
@@ -4945,6 +4954,7 @@ mod tests {
                 state: AgentState::Idle,
                 visible_blocker: false,
                 visible_working: false,
+                background_work: false,
                 process_exited: false,
                 observed_at: _,
             } if delivered_pane == pane_id

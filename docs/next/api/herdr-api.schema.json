@@ -778,6 +778,9 @@
             "agent_status": {
               "$ref": "#/schemas/event/$defs/AgentStatus"
             },
+            "background_work": {
+              "type": "boolean"
+            },
             "cwd": {
               "type": [
                 "string",
@@ -6627,6 +6630,9 @@
             "agent_status": {
               "$ref": "#/schemas/success_response/$defs/AgentStatus"
             },
+            "background_work": {
+              "type": "boolean"
+            },
             "cwd": {
               "type": [
                 "string",
@@ -7942,6 +7948,9 @@
             },
             "agent_status": {
               "$ref": "#/schemas/success_response/$defs/AgentStatus"
+            },
+            "background_work": {
+              "type": "boolean"
             },
             "cwd": {
               "type": [
