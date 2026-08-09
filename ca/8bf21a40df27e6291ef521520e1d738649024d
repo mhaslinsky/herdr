@@ -1,0 +1,102 @@
+src/app/api.rs
+  s_b0e8b08a621978::t_f4bbcf0c3f0b2e 595
+  s_b0e8b08a621978::t_66e99dea89ae69 1753,1763,1848,1858,1965,1982-2039,2319,2340
+  s_b0e8b08a621978::t_7dc69e2672bd57 2078,2252
+src/detect/manifest.rs
+  s_b0e8b08a621978::t_fa8235026c611d 457-460
+  s_b0e8b08a621978::t_9e0e9379c95f55 111,445,843,858-863,879
+  s_b0e8b08a621978::t_dec93ed33cb8cb 37,100,110,172-173,417,429,444,453-456,472,497,503,523,562,830,842,878,970-979,1347
+  s_b0e8b08a621978::t_9c0d29a4e4c100 342,360,376
+src/api/schema/agents.rs
+  s_b0e8b08a621978::t_adf5c6aa491aa8 200-201
+src/api/schema/panes.rs
+  s_b0e8b08a621978::t_adf5c6aa491aa8 469-470
+docs/next/website/src/content/docs/socket-api.mdx
+  s_b0e8b08a621978::t_3f3caf0ecf7776 734-735,904
+src/detect/manifest_update.rs
+  s_b0e8b08a621978::t_dec93ed33cb8cb 15
+scripts/agent_detection_manifest_check.py
+  s_b0e8b08a621978::t_bcda0aa8890bdd 28,160-162
+  s_b0e8b08a621978::t_4c2213843c9ad2 163
+src/events.rs
+  s_b0e8b08a621978::t_f8b6ec57d73dc4 66
+scripts/test_agent_detection_manifest_check.py
+  s_b0e8b08a621978::t_bcda0aa8890bdd 167-184
+src/app/actions.rs
+  s_b0e8b08a621978::t_f4bbcf0c3f0b2e 252,1057,2782,2787,2793,2966-2968,3012
+  s_b0e8b08a621978::t_51451b92cc5848 4841,4880,4914,4937,4959,4969,5015,5040,5073,5085,5109,5135,5163,5219,5238,5269,5293,5320,5381,5514,5544,5571,5595,5617
+src/terminal/state.rs
+  s_b0e8b08a621978::t_2a94c295770491 100,127,161,310-312,320-323,356,376,588,592-596,598
+  s_b0e8b08a621978::t_ffb1d4e80cfb73 126,379,597,1984
+  s_b0e8b08a621978::t_b9c03e73762c57 755,1452,1553,1671,1737
+  s_b0e8b08a621978::t_99769cd8a510d9 599,5223-5232,5246,5298-5307,5316-5323
+  s_b0e8b08a621978::t_6756b8f21e7ebe 290-303
+  s_b0e8b08a621978::t_12e65d3ef5a57c 2204
+  s_b0e8b08a621978::t_6c794f8665b95a 304-309
+  s_b0e8b08a621978::t_1067af5f198ab5 600
+src/api/subscriptions.rs
+  s_b0e8b08a621978::t_adf5c6aa491aa8 67-68,673
+src/detect/mod.rs
+  s_b0e8b08a621978::t_dec93ed33cb8cb 39-41,276
+src/app/agents.rs
+  s_b0e8b08a621978::t_adf5c6aa491aa8 381
+src/api/server.rs
+  s_b0e8b08a621978::t_adf5c6aa491aa8 905
+src/terminal/metadata.rs
+  s_b0e8b08a621978::t_b9c03e73762c57 293,377
+src/app/creation.rs
+  s_b0e8b08a621978::t_adf5c6aa491aa8 464
+src/detect/manifest/tests.rs
+  s_b0e8b08a621978::t_ffb1d4e80cfb73 614-617,739-742,744-765,770
+  s_b0e8b08a621978::t_f368aa24476323 90-95,599-613,618-642,647-738,771-792,797-798
+  s_b0e8b08a621978::t_bcda0aa8890bdd 801
+  s_b0e8b08a621978::t_9147d05d427ee1 643-646,743,766-769,793-796
+  s_b0e8b08a621978::t_7117e177eff6fa 799
+src/pane/agent_detection.rs
+  s_b0e8b08a621978::t_174994a72a2edb 506-528
+  s_b0e8b08a621978::t_12e65d3ef5a57c 544,565
+  s_b0e8b08a621978::t_6c76a7a1c59a22 347,358,372
+  s_b0e8b08a621978::t_700371087e7d9e 21,152,223,234,257,264,290,319
+  s_b138f1b67d69bf::t_2dcc15b3b1d154 505
+src/cli/agent.rs
+  s_b0e8b08a621978::t_9e0e9379c95f55 158-175,248,257-258
+src/api/schema/tests.rs
+  s_b0e8b08a621978::t_95f84b7a60e058 32-89
+  s_b0e8b08a621978::t_47a076c09ca4a7 90-101,817,1246
+src/pane.rs
+  s_b0e8b08a621978::t_ebef3409a4f51c 216-217
+  s_b0e8b08a621978::t_f8b6ec57d73dc4 178,192,212,228,236,252,654,683,796,806,897,911,923,931,2146,2185,2300,2310,2430,2444,2456,2464
+  s_b0e8b08a621978::t_12e65d3ef5a57c 4317,4355
+docs/next/api/herdr-api.schema.json
+  s_b0e8b08a621978::t_c96f0ffed9162c 781-783,6136-6138,7419-7421
+src/app/input/mouse.rs
+  s_b0e8b08a621978::t_da170179e3b230 2831
+src/app/mod.rs
+  s_b0e8b08a621978::t_2870f5f0d98bb8 5022,5047
+src/server/headless.rs
+  s_b0e8b08a621978::t_6fca57eeafc237 10663,10753
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "ca8bf21a40df27e6291ef521520e1d738649024d",
+  "prompts": {},
+  "sessions": {
+    "s_b0e8b08a621978": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fe4d8-0902-7a81-9f92-a3e60940c707",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    },
+    "s_b138f1b67d69bf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3b19dd37-f658-4e51-9d6c-789bd768adf5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
