@@ -1,0 +1,26 @@
+src/terminal/metadata.rs
+  s_507dc762e2a5ee::t_32c9f3bbf6f726 175-180,185-186,1195-1221,1223-1234,1245-1246
+  s_507dc762e2a5ee::t_20196e8be03761 514-517,1247
+  s_507dc762e2a5ee::t_9dcbc98a5fdd62 1222
+  s_507dc762e2a5ee::t_fa87100c0c419b 181-184
+  s_507dc762e2a5ee::t_de3a2b8db2d240 1237-1242
+  s_507dc762e2a5ee::t_43f47bf5f2964d 187-188
+  s_507dc762e2a5ee::t_72209d8c0fded0 1235-1236
+  s_507dc762e2a5ee::t_c766282e383675 1243-1244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "a7a0c784425402332bdc89d2927dfa2bf72e5fa5",
+  "prompts": {},
+  "sessions": {
+    "s_507dc762e2a5ee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fe83a-a2f9-7e12-badf-8d49fa0ff25c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
