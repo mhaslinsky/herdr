@@ -1571,7 +1571,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn agent_explain_rejects_hook_only_full_lifecycle_authority() {
+    async fn agent_explain_reports_background_work_unavailable_under_hook_authority() {
         let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut app = App::new(
             &crate::config::Config::default(),
@@ -1586,17 +1586,20 @@ mod tests {
         let terminal_id = app.state.workspaces[0].tabs[0].panes[&pane_id]
             .attached_terminal_id
             .clone();
-        app.state
-            .terminals
-            .get_mut(&terminal_id)
-            .unwrap()
-            .set_hook_authority(
-                "herdr:omp".to_string(),
-                "omp".to_string(),
-                AgentState::Working,
-                None,
-                Some(1),
-            );
+        let terminal = app.state.terminals.get_mut(&terminal_id).unwrap();
+        terminal.set_detected_state(Some(Agent::Omp), AgentState::Idle);
+        terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
+            source: "herdr:omp".to_string(),
+            agent: "omp".to_string(),
+            session_ref: crate::agent_resume::AgentSessionRef::id("omp-session").unwrap(),
+        });
+        terminal.set_hook_authority(
+            "herdr:omp".to_string(),
+            "omp".to_string(),
+            AgentState::Working,
+            None,
+            Some(1),
+        );
         let runtime = crate::terminal::TerminalRuntime::test_with_screen_bytes(80, 24, b"");
         app.terminal_runtimes.insert(terminal_id, runtime);
         let target = app.public_pane_id(0, pane_id).unwrap();
@@ -1609,7 +1612,22 @@ mod tests {
         });
         let response: serde_json::Value = serde_json::from_str(&response).unwrap();
 
-        assert_eq!(response["error"]["code"], "agent_not_found");
+        assert_eq!(response["result"]["type"], "agent_explain");
+        assert_eq!(
+            response["result"]["explain"]["screen_detection_skipped"],
+            true
+        );
+        let explain_object = response["result"]["explain"].as_object().unwrap();
+        assert!(explain_object.contains_key("background_work"));
+        assert!(explain_object.contains_key("background_work_rules"));
+        assert_eq!(
+            response["result"]["explain"]["background_work"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            response["result"]["explain"]["background_work_rules"],
+            serde_json::Value::Null
+        );
     }
 
     #[tokio::test]

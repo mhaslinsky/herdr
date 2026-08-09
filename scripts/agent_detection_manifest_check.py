@@ -157,7 +157,7 @@ def validate_manifest(path: Path, engine_version: int) -> dict:
             raise CheckError(
                 f"{path}: rule {rule['id']} region {region!r} requires min_engine_version 3"
             )
-        if rule.get("background_work") and min_engine < 4:
+        if "background_work" in rule and min_engine < 4:
             raise CheckError(
                 f"{path}: rule {rule['id']} uses background_work which requires min_engine_version 4"
             )
@@ -332,7 +332,6 @@ def validate_catalog(
         stages_new_engine_manifest = (
             staged_manifest
             == (bundled_manifest["version"], manifest["version"], website_digest)
-            and bundled_manifest["min_engine_version"] == engine_version
             and manifest["min_engine_version"] < bundled_manifest["min_engine_version"]
         )
         if cmp < 0 and not stages_new_engine_manifest:

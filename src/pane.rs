@@ -861,10 +861,6 @@ fn spawn_basic_detection_task(
             last_screen_scan_detection_content_seq = current_detection_content_seq;
             let content_changed = content != last_detection_text;
             last_detection_text.clone_from(&content);
-            if !process_exited && crate::detect::should_skip_state_update(agent, &content) {
-                pending_idle.clear();
-                continue;
-            }
             sync_content_change_acquisition(
                 agent_presence.current_agent(),
                 suppressed_agent,
@@ -877,16 +873,13 @@ fn spawn_basic_detection_task(
 
             let osc_title = terminal.agent_osc_title();
             let osc_progress = terminal.agent_osc_progress();
-            let Some(screen_detection) = detection_update_for_publish_with_osc(
+            let screen_detection = detection_update_for_publish_with_osc(
                 agent,
                 &content,
                 &osc_title,
                 &osc_progress,
                 process_exited,
-            ) else {
-                pending_idle.clear();
-                continue;
-            };
+            );
             match decide_screen_detection_publish(
                 ScreenDetectionPublishInput {
                     screen_detection,
@@ -2394,10 +2387,6 @@ impl PaneRuntime {
                     last_screen_scan_detection_content_seq = current_detection_content_seq;
                     let content_changed = content != last_detection_text;
                     last_detection_text.clone_from(&content);
-                    if detect::should_skip_state_update(agent, &content) {
-                        pending_idle.clear();
-                        continue;
-                    }
                     sync_content_change_acquisition(
                         agent_presence.current_agent(),
                         suppressed_agent,
@@ -2410,16 +2399,13 @@ impl PaneRuntime {
 
                     let osc_title = terminal.agent_osc_title();
                     let osc_progress = terminal.agent_osc_progress();
-                    let Some(screen_detection) = detection_update_for_publish_with_osc(
+                    let screen_detection = detection_update_for_publish_with_osc(
                         agent,
                         &content,
                         &osc_title,
                         &osc_progress,
                         process_exited,
-                    ) else {
-                        pending_idle.clear();
-                        continue;
-                    };
+                    );
                     match decide_screen_detection_publish(
                         ScreenDetectionPublishInput {
                             screen_detection,

@@ -185,6 +185,8 @@ impl App {
                 "visible_idle": false,
                 "visible_blocker": false,
                 "visible_working": false,
+                "background_work": null,
+                "background_work_rules": null,
                 "screen_detection_skipped": true,
                 "screen_detection_skip_reason": "full_lifecycle_hook_authority",
                 "skip_state_update": false,

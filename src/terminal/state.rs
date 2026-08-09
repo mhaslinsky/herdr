@@ -741,6 +741,8 @@ impl TerminalState {
             reported_at: now,
             session_ref,
         });
+        let background_work_changed =
+            self.live_full_lifecycle_hook_authority() && self.set_detection_background_work(false);
         let current_session = self.current_session_identity_for_persistence();
         Some(TerminalStateMutation {
             effective_state_change: self.recompute_effective_state(
@@ -752,7 +754,7 @@ impl TerminalState {
             ),
             session_ref_changed: previous_session != current_session,
             agent_released: false,
-            background_work_changed: false,
+            background_work_changed,
         })
     }
 
@@ -2230,6 +2232,45 @@ mod tests {
         assert_eq!(terminal.fallback_state, AgentState::Idle);
         assert_eq!(terminal.effective_agent_label(), Some("pi"));
         assert_eq!(terminal.state, AgentState::Working);
+    }
+
+    #[test]
+    fn full_lifecycle_hook_takeover_clears_detected_background_work() {
+        let mut terminal = test_terminal();
+        let session_ref =
+            crate::agent_resume::AgentSessionRef::path(test_session_path("pi.jsonl")).unwrap();
+        terminal.set_detected_state_with_background_work_at(
+            Some(Agent::Pi),
+            AgentState::Working,
+            false,
+            false,
+            false,
+            true,
+            false,
+            Instant::now(),
+        );
+        terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
+            source: "herdr:pi".into(),
+            agent: "pi".into(),
+            session_ref: session_ref.clone(),
+        });
+        let revision_before_takeover = terminal.revision;
+
+        let mutation = terminal
+            .set_hook_authority_with_session_ref(
+                "herdr:pi".into(),
+                "pi".into(),
+                AgentState::Working,
+                None,
+                Some(session_ref),
+                Some(1),
+            )
+            .expect("full-lifecycle hook report should be accepted");
+
+        assert!(terminal.full_lifecycle_hook_authority_active());
+        assert!(mutation.background_work_changed);
+        assert!(!terminal.background_work);
+        assert_eq!(terminal.revision, revision_before_takeover.wrapping_add(1));
     }
 
     #[test]

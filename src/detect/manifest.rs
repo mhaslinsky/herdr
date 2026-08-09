@@ -168,8 +168,7 @@ struct ManifestRule {
     visible_blocker: bool,
     #[serde(default)]
     visible_working: bool,
-    #[serde(default)]
-    background_work: bool,
+    background_work: Option<bool>,
     #[serde(default)]
     skip_state_update: bool,
     #[serde(default)]
@@ -389,23 +388,6 @@ pub fn explain_for_label(agent_label: &str, screen_content: &str) -> DetectionEx
     explain(agent, screen_content)
 }
 
-pub fn should_skip_state_update(agent: Agent, screen_content: &str) -> bool {
-    let Some(loaded) = load_manifest(agent) else {
-        return false;
-    };
-    evaluate_loaded_manifest(
-        agent,
-        DetectionInput {
-            screen: screen_content,
-            osc_title: "",
-            osc_progress: "",
-        },
-        loaded,
-        false,
-    )
-    .skip_state_update
-}
-
 impl DetectionExplain {
     fn into_detection(self) -> AgentDetection {
         AgentDetection {
@@ -441,7 +423,7 @@ fn evaluate_loaded_manifest(
                 .state
                 .map(AgentState::from)
                 .unwrap_or(AgentState::Unknown),
-            background_work: rule.background_work,
+            background_work: rule.background_work.unwrap_or(false),
             skip_state_update: rule.skip_state_update,
             matched: matched_rule,
         });
@@ -450,7 +432,7 @@ fn evaluate_loaded_manifest(
             continue;
         }
 
-        if rule.background_work && !rule.skip_state_update {
+        if rule.background_work.unwrap_or(false) && !rule.skip_state_update {
             background_work = true;
         }
 
@@ -494,7 +476,7 @@ fn evaluate_loaded_manifest(
             priority: rule.priority,
             region: region_name,
             state,
-            background_work: rule.background_work,
+            background_work: rule.background_work.unwrap_or(false),
         }),
         screen_detection_skipped: false,
         visible_idle: rule.visible_idle && state == AgentState::Idle,
@@ -967,7 +949,7 @@ fn validate_manifest(manifest: &AgentManifest) -> Result<(), String> {
                 rule.id, TOP_NON_EMPTY_LINES_ENGINE_VERSION
             ));
         }
-        if rule.background_work
+        if rule.background_work.is_some()
             && manifest
                 .min_engine_version
                 .is_some_and(|version| version < BACKGROUND_WORK_ENGINE_VERSION)

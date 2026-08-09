@@ -2976,6 +2976,11 @@ impl AppState {
         if mutation.session_ref_changed || managed_changed || agent_name_changed {
             self.mark_session_dirty();
         }
+        let background_only_change = mutation.background_work_changed
+            && mutation.effective_state_change.is_none()
+            && !mutation.agent_released
+            && !managed_changed
+            && !agent_name_changed;
         let agent_released = mutation.agent_released;
         let change = mutation.effective_state_change.or(unchanged_change)?;
         if change.previous_state != change.state {
@@ -2984,7 +2989,11 @@ impl AppState {
                 terminal.last_agent_state_change_seq = Some(self.next_agent_state_change_seq);
             }
         }
-        let seen = self.apply_pane_state_change(ws_idx, pane_id, &change)?;
+        let seen = if background_only_change {
+            self.workspaces[ws_idx].pane_state(pane_id)?.seen
+        } else {
+            self.apply_pane_state_change(ws_idx, pane_id, &change)?
+        };
         let update = PaneStateUpdate {
             pane_id,
             ws_idx,
@@ -5054,6 +5063,46 @@ mod tests {
         assert_eq!(toast.title, "pi needs attention");
         assert_eq!(toast.context, "background · 2");
         assert!(state.pending_agent_notifications.is_empty());
+    }
+
+    #[test]
+    fn background_only_edge_preserves_delayed_notification() {
+        let mut state = app_with_workspaces(&["active", "background"]);
+        state.active = Some(0);
+        state.toast_config.delivery = crate::config::ToastDelivery::Herdr;
+        state.toast_config.delay_seconds = 1;
+        let background_pane_id = *state.workspaces[1].panes.keys().next().unwrap();
+
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id: background_pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Blocked,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: false,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+        let original_deadline = state.next_pending_agent_notification_deadline().unwrap();
+
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id: background_pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Blocked,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: true,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+
+        assert_eq!(
+            state.next_pending_agent_notification_deadline(),
+            Some(original_deadline)
+        );
+        let deliveries = state.drain_due_agent_notifications(original_deadline);
+        assert_eq!(deliveries.len(), 1);
+        assert_eq!(deliveries[0].kind, ToastKind::NeedsAttention);
     }
 
     #[test]

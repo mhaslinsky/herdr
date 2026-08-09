@@ -77,8 +77,8 @@ class AgentDetectionManifestCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             bundled, website = staged_grok_dirs(Path(tmp))
 
-            bundled_manifests = check.load_manifest_dir(bundled, engine_version=3)
-            check.validate_catalog(website, bundled_manifests, engine_version=3)
+            bundled_manifests = check.load_manifest_dir(bundled, engine_version=4)
+            check.validate_catalog(website, bundled_manifests, engine_version=4)
 
     def test_rejects_mutated_staged_website_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -171,6 +171,24 @@ class AgentDetectionManifestCheckTests(unittest.TestCase):
             content = manifest("codex", "2026.06.10.1").replace(
                 'contains = ["ready"]',
                 'background_work = true\ncontains = ["ready"]',
+            )
+            (bundled / "codex.toml").write_text(content)
+
+            with self.assertRaisesRegex(check.CheckError, "requires min_engine_version 4"):
+                check.load_manifest_dir(bundled, engine_version=4)
+
+            (bundled / "codex.toml").write_text(
+                content.replace("min_engine_version = 1", "min_engine_version = 4")
+            )
+            check.load_manifest_dir(bundled, engine_version=4)
+
+    def test_rejects_explicit_false_background_work_below_engine_four(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            bundled = Path(temporary_directory) / "bundled"
+            bundled.mkdir()
+            content = manifest("codex", "2026.06.10.1").replace(
+                'contains = ["ready"]',
+                'background_work = false\ncontains = ["ready"]',
             )
             (bundled / "codex.toml").write_text(content)
 

@@ -618,6 +618,27 @@ contains = ["active"]
 }
 
 #[test]
+fn explicit_false_background_work_requires_engine_four() {
+    let engine_three = r#"
+id = "codex"
+min_engine_version = 3
+
+[[rules]]
+id = "idle"
+state = "idle"
+background_work = false
+contains = ["ready"]
+"#;
+
+    let error = parse_manifest(engine_three).unwrap_err();
+    assert!(error.contains("background_work"));
+    assert!(parse_manifest(
+        &engine_three.replace("min_engine_version = 3", "min_engine_version = 4")
+    )
+    .is_ok());
+}
+
+#[test]
 fn stateless_background_rule_never_wins_state_arbitration() {
     with_manifest_dirs("background-work-arbitration", || {
         write_local_codex(&rules_manifest(
@@ -699,6 +720,37 @@ contains = ["history"]
         assert!(!explanation.background_work);
         let json = explain_to_json_value(&explanation);
         assert_eq!(json["background_work_rules"], serde_json::json!([]));
+    });
+}
+
+#[test]
+fn skip_state_winner_keeps_background_work_from_another_rule() {
+    with_manifest_dirs("background-work-with-skip-state", || {
+        write_local_codex(&rules_manifest(
+            r#"
+[[rules]]
+id = "history_viewer"
+state = "unknown"
+priority = 100
+skip_state_update = true
+contains = ["history"]
+
+[[rules]]
+id = "task_chip"
+priority = 1
+background_work = true
+contains = ["task"]
+"#,
+        ));
+
+        let explanation = explain(Agent::Codex, "history task");
+        assert!(explanation.skip_state_update);
+        assert!(explanation.background_work);
+        let json = explain_to_json_value(&explanation);
+        assert_eq!(
+            json["background_work_rules"],
+            serde_json::json!(["task_chip"])
+        );
     });
 }
 
