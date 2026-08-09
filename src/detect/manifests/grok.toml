@@ -79,7 +79,7 @@ any = [
 # the number of running background tasks and disappears when the count is zero.
 [[rules]]
 id = "background_work_chip_working"
-state = "working"
+background_work = true
 priority = 1170
 region = "top_non_empty_lines(1)"
 visible_working = true

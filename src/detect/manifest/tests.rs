@@ -966,6 +966,13 @@ fn claude_background_shell_footer_requires_a_positive_count() {
     }
 }
 
+#[test]
+fn grok_background_chip_is_stateless_background_work() {
+    let explanation = explain(Agent::Grok, "· 2 │");
+    assert!(explanation.background_work);
+    assert_ne!(explanation.state, AgentState::Working);
+}
+
 // --- Codex OSC rules ---
 
 #[test]
