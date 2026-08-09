@@ -1539,6 +1539,7 @@ mod tests {
                         agent: Some("pi".into()),
                         released: true,
                         final_status: Some(crate::api::schema::AgentStatus::Done),
+                        final_agent: None,
                     },
                 });
                 msg.respond_to
@@ -1568,6 +1569,67 @@ mod tests {
 
         let response: serde_json::Value = serde_json::from_str(&read_line(&mut client)).unwrap();
         assert_eq!(response["error"]["code"], "agent_not_running");
+        drop(api_tx);
+        assert_eq!(responder.join().unwrap(), 1);
+    }
+
+    #[test]
+    fn agent_wait_release_returns_observed_matching_terminal_snapshot() {
+        let event_hub = EventHub::default();
+        let responder_event_hub = event_hub.clone();
+        let (api_tx, mut api_rx) = mpsc::unbounded_channel::<ApiRequestMessage>();
+        let responder = std::thread::spawn(move || {
+            let mut request_count = 0u64;
+            while let Some(msg) = api_rx.blocking_recv() {
+                let Method::AgentGet(_) = msg.request.method else {
+                    panic!("unexpected request: {:?}", msg.request.method);
+                };
+                request_count += 1;
+                responder_event_hub.push(crate::api::schema::EventEnvelope {
+                    event: crate::api::schema::EventKind::PaneAgentDetected,
+                    data: crate::api::schema::EventData::PaneAgentDetected {
+                        pane_id: "pane_1".into(),
+                        workspace_id: "ws_1".into(),
+                        agent: Some("pi".into()),
+                        released: true,
+                        final_status: Some(crate::api::schema::AgentStatus::Done),
+                        final_agent: Some(Box::new(agent_info(
+                            crate::api::schema::AgentStatus::Done,
+                            false,
+                            6,
+                        ))),
+                    },
+                });
+                msg.respond_to
+                    .send(
+                        serde_json::to_string(&SuccessResponse {
+                            id: msg.request.id,
+                            result: ResponseResult::AgentInfo {
+                                agent: agent_info(crate::api::schema::AgentStatus::Idle, true, 5),
+                            },
+                        })
+                        .unwrap(),
+                    )
+                    .unwrap();
+            }
+            request_count
+        });
+
+        let (mut client, server, _path) = local_stream_pair("agwait-release-observed");
+        client
+            .write_all(br#"{"id":"agent_wait","method":"agent.wait","params":{"target":"worker","until":["done"],"timeout_ms":1000}}"#)
+            .unwrap();
+        client.write_all(b"\n").unwrap();
+        client.flush().unwrap();
+
+        let running = Arc::new(AtomicBool::new(true));
+        handle_connection(server, &api_tx, &event_hub, &running, None).unwrap();
+
+        let response: serde_json::Value = serde_json::from_str(&read_line(&mut client)).unwrap();
+        assert_eq!(response["result"]["type"], "agent_info");
+        assert_eq!(response["result"]["agent"]["agent_status"], "done");
+        assert!(response["result"]["agent"]["background_work"].is_null());
+        assert_eq!(response["result"]["agent"]["revision"], 6);
         drop(api_tx);
         assert_eq!(responder.join().unwrap(), 1);
     }

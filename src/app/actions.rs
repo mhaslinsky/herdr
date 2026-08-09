@@ -284,6 +284,7 @@ pub struct PaneStateUpdate {
     pub agent_name_changed: bool,
     pub agent_released: bool,
     pub agent_release_status: Option<crate::api::schema::AgentStatus>,
+    pub released_agent_name: Option<String>,
     pub background_work_changed: bool,
     pub completion_deferred: bool,
     pub deferred_completion: bool,
@@ -1115,6 +1116,7 @@ impl AppState {
                     agent_name_changed: false,
                     agent_released: false,
                     agent_release_status: None,
+                    released_agent_name: None,
                     background_work_changed: false,
                     completion_deferred: false,
                     deferred_completion: false,
@@ -3024,7 +3026,7 @@ impl AppState {
             .clone();
         let previous_seen = self.workspaces[ws_idx].pane_state(pane_id)?.seen;
         let now = Instant::now();
-        let (mutation, managed_changed, agent_name_changed, unchanged_change) = {
+        let (mutation, managed_changed, agent_name_changed, previous_agent_name, unchanged_change) = {
             let terminal = self.terminals.get_mut(&terminal_id)?;
             let previous_agent_name = terminal.agent_name.clone();
             let mutation = update(terminal)?;
@@ -3037,6 +3039,7 @@ impl AppState {
                 mutation,
                 managed_changed,
                 agent_name_changed,
+                previous_agent_name,
                 unchanged_change,
             )
         };
@@ -3091,6 +3094,7 @@ impl AppState {
             agent_name_changed,
             agent_released,
             agent_release_status: agent_released.then(|| pane_agent_status(change.state, seen)),
+            released_agent_name: agent_released.then_some(previous_agent_name).flatten(),
             background_work_changed: mutation.background_work_changed,
             completion_deferred: mutation.completion_deferred,
             deferred_completion: mutation.deferred_completion,

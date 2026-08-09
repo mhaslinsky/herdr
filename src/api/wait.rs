@@ -388,9 +388,21 @@ fn wait_for_resolved_agent(
                     pane_id: event_pane,
                     agent,
                     released,
+                    final_agent,
                     ..
                 } if event_pane == pane_id => {
                     if released {
+                        if let Some(final_agent) = final_agent {
+                            if agent_wait_identity_matches(
+                                &final_agent,
+                                &expected_terminal_id,
+                                expected_name.as_deref(),
+                                expected_agent.as_deref(),
+                            ) && resolved_agent_wait_matches(&wait, &final_agent, false)
+                            {
+                                return Ok(Some(AgentWaitOutcome::Matched(final_agent)));
+                            }
+                        }
                         return agent_wait_not_running(request_id)
                             .map(AgentWaitOutcome::Response)
                             .map(Some);

@@ -536,6 +536,9 @@ pub enum EventData {
         released: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         final_status: Option<AgentStatus>,
+        #[serde(skip)]
+        #[schemars(skip)]
+        final_agent: Option<Box<super::agents::AgentInfo>>,
     },
     PaneAgentStatusChanged {
         pane_id: String,
