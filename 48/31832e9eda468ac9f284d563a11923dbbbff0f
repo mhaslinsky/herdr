@@ -1,0 +1,53 @@
+src/terminal/state.rs
+  s_507dc762e2a5ee::t_9294abb24e011f 2372-2419
+  s_507dc762e2a5ee::t_29fa129476f92a 827-829,2081
+  s_507dc762e2a5ee::t_f8b7b4ec1db287 324-348,360-362,365,641-644,646,652,654,679
+  s_507dc762e2a5ee::t_5cfac364cd5a77 117-122,136,171
+  s_507dc762e2a5ee::t_b22021b3a13092 357-359
+  s_b25fc3eb75d8a6::t_6f357ec8d57f35 323,2371
+src/app/mod.rs
+  s_507dc762e2a5ee::t_475b0224f984c7 5025,5051
+src/events.rs
+  s_507dc762e2a5ee::t_5cfac364cd5a77 67
+src/pane.rs
+  s_507dc762e2a5ee::t_c217e4739fd67f 186,202
+  s_507dc762e2a5ee::t_5cfac364cd5a77 179,194,224,256,925,2456
+  s_507dc762e2a5ee::t_5f10de2d910963 264-269,678,689,797,2160,2181,2298,4363
+  s_507dc762e2a5ee::t_f8b7b4ec1db287 819,2321
+  s_507dc762e2a5ee::t_29fa129476f92a 4323
+src/app/actions.rs
+  s_507dc762e2a5ee::t_2bf9d7701b8acb 2851-2863,4937,4977,5014,5034,5058,5090,5102,5118-5157,5165-5205,5213-5215,5238,5262,5285,5296,5343,5369,5403,5416,5445,5458,5483,5510,5539,5596,5616,5648,5673,5701,5763,5897,5928,5956,5981,6004
+  s_507dc762e2a5ee::t_5cfac364cd5a77 2846
+  s_507dc762e2a5ee::t_55da4f3ef890bd 5206-5212
+  s_507dc762e2a5ee::t_d8ccc6db835ebf 5107-5113,5158-5164
+src/app/api.rs
+  s_507dc762e2a5ee::t_730879429a099a 1778,1789,1875,1886,1994,2045,2109,2284,2352,2374
+src/app/input/mouse.rs
+  s_507dc762e2a5ee::t_7a91be4f7eb36d 2832
+src/server/headless.rs
+  s_507dc762e2a5ee::t_6dbf19c4c17376 10579,10676,10702,10762,10813
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "4831832e9eda468ac9f284d563a11923dbbbff0f",
+  "prompts": {},
+  "sessions": {
+    "s_507dc762e2a5ee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fe83a-a2f9-7e12-badf-8d49fa0ff25c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    },
+    "s_b25fc3eb75d8a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1c2cbf5a-6554-40fa-95d5-27dfefcaf4aa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
