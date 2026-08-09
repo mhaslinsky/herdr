@@ -114,6 +114,12 @@ struct RecentAgentProcessExit {
     observed_at: Instant,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DeferredCompletionOwner {
+    agent: Agent,
+    detector_generation: u64,
+}
+
 /// Pure state for a server-owned terminal.
 ///
 /// During the migration this is still one-to-one with a pane-backed PTY, but
@@ -127,7 +133,7 @@ pub struct TerminalState {
     fallback_visible_blocker: bool,
     /// Detection-sourced background work, independent of semantic agent state.
     pub background_work: bool,
-    deferred_completion_owed: bool,
+    deferred_completion_owner: Option<DeferredCompletionOwner>,
     fallback_observed_at: Option<Instant>,
     pub hook_authority: Option<HookAuthority>,
     pub agent_metadata: HashMap<String, AgentMetadata>,
@@ -162,7 +168,7 @@ impl TerminalState {
             fallback_state: AgentState::Unknown,
             fallback_visible_blocker: false,
             background_work: false,
-            deferred_completion_owed: false,
+            deferred_completion_owner: None,
             fallback_observed_at: None,
             hook_authority: None,
             agent_metadata: HashMap::new(),
@@ -315,6 +321,32 @@ impl TerminalState {
         process_exited: bool,
         now: Instant,
     ) -> TerminalStateMutation {
+        self.set_detected_state_with_background_work_generation_at(
+            agent,
+            fallback_state,
+            visible_blocker,
+            _visible_idle,
+            _visible_working,
+            background_work,
+            0,
+            process_exited,
+            now,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_detected_state_with_background_work_generation_at(
+        &mut self,
+        agent: Option<Agent>,
+        fallback_state: AgentState,
+        visible_blocker: bool,
+        _visible_idle: bool,
+        _visible_working: bool,
+        background_work: bool,
+        detector_generation: u64,
+        process_exited: bool,
+        now: Instant,
+    ) -> TerminalStateMutation {
         let previous_agent_label = self.effective_agent_label().map(str::to_string);
         let previous_known_agent = self.effective_known_agent();
         let previous_state = self.state;
@@ -322,9 +354,15 @@ impl TerminalState {
         let previous_detected_agent = self.detected_agent;
         let previous_session = self.current_session_identity_for_persistence();
         let mut background_work_changed = false;
+        let debt_owner_matches = self.deferred_completion_owner.is_some_and(|owner| {
+            Some(owner.agent) == agent && owner.detector_generation == detector_generation
+        });
+        if !debt_owner_matches {
+            self.deferred_completion_owner = None;
+        }
         if process_exited {
             background_work_changed = self.set_detection_background_work(false);
-            self.deferred_completion_owed = false;
+            self.deferred_completion_owner = None;
         }
         let newer_custom_authority = process_exited
             && self.hook_authority.as_ref().is_some_and(|authority| {
@@ -600,17 +638,20 @@ impl TerminalState {
                     )
             });
         if completion_deferred {
-            self.deferred_completion_owed = true;
+            self.deferred_completion_owner = agent.map(|agent| DeferredCompletionOwner {
+                agent,
+                detector_generation,
+            });
         } else if self.state != AgentState::Idle {
-            self.deferred_completion_owed = false;
+            self.deferred_completion_owner = None;
         }
         let deferred_completion = !process_exited
             && background_work_changed
             && !self.background_work
             && self.state == AgentState::Idle
-            && self.deferred_completion_owed;
+            && self.deferred_completion_owner.is_some();
         if deferred_completion {
-            self.deferred_completion_owed = false;
+            self.deferred_completion_owner = None;
             effective_state_change = Some(self.unchanged_effective_state_change_at(now));
         }
         TerminalStateMutation {
@@ -635,7 +676,7 @@ impl TerminalState {
 
     #[cfg(test)]
     pub(crate) fn deferred_completion_owed(&self) -> bool {
-        self.deferred_completion_owed
+        self.deferred_completion_owner.is_some()
     }
 
     #[cfg(test)]
@@ -783,6 +824,9 @@ impl TerminalState {
         });
         let background_work_changed =
             self.live_full_lifecycle_hook_authority() && self.set_detection_background_work(false);
+        if self.live_full_lifecycle_hook_authority() {
+            self.deferred_completion_owner = None;
+        }
         let current_session = self.current_session_identity_for_persistence();
         Some(TerminalStateMutation {
             effective_state_change: self.recompute_effective_state(
@@ -2034,7 +2078,7 @@ impl TerminalState {
         self.fallback_state = AgentState::Unknown;
         self.fallback_visible_blocker = false;
         self.set_detection_background_work(false);
-        self.deferred_completion_owed = false;
+        self.deferred_completion_owner = None;
         self.fallback_observed_at = None;
         self.hook_authority = None;
         self.persisted_agent_session = None;
@@ -2322,6 +2366,55 @@ mod tests {
         assert!(mutation.background_work_changed);
         assert!(!terminal.background_work);
         assert_eq!(terminal.revision, revision_before_takeover.wrapping_add(1));
+    }
+
+    #[test]
+    fn full_lifecycle_hook_takeover_discards_completion_debt() {
+        let mut terminal = test_terminal();
+        let observed_at = Instant::now();
+        terminal.set_detected_state_with_background_work_generation_at(
+            Some(Agent::Pi),
+            AgentState::Working,
+            false,
+            false,
+            false,
+            false,
+            4,
+            false,
+            observed_at,
+        );
+        terminal.set_detected_state_with_background_work_generation_at(
+            Some(Agent::Pi),
+            AgentState::Idle,
+            false,
+            false,
+            false,
+            true,
+            4,
+            false,
+            observed_at + Duration::from_millis(1),
+        );
+        assert!(terminal.deferred_completion_owed());
+
+        let session_ref =
+            crate::agent_resume::AgentSessionRef::path(test_session_path("pi-debt.jsonl")).unwrap();
+        terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
+            source: "herdr:pi".into(),
+            agent: "pi".into(),
+            session_ref: session_ref.clone(),
+        });
+        terminal
+            .set_hook_authority_with_session_ref(
+                "herdr:pi".into(),
+                "pi".into(),
+                AgentState::Idle,
+                None,
+                Some(session_ref),
+                Some(1),
+            )
+            .expect("full-lifecycle hook report should be accepted");
+
+        assert!(!terminal.deferred_completion_owed());
     }
 
     #[test]

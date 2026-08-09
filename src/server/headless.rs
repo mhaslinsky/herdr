@@ -10576,6 +10576,7 @@ next_tab = ""
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: Instant::now(),
         });
@@ -10672,6 +10673,7 @@ next_tab = ""
                     visible_blocker: false,
                     visible_working: false,
                     background_work,
+                    detector_generation: 0,
                     process_exited: false,
                     observed_at: Instant::now(),
                 })
@@ -10697,6 +10699,7 @@ next_tab = ""
                 visible_blocker: false,
                 visible_working: false,
                 background_work: false,
+                detector_generation: 0,
                 process_exited: false,
                 observed_at: Instant::now(),
             })
@@ -10756,6 +10759,7 @@ next_tab = ""
                     visible_blocker: false,
                     visible_working: false,
                     background_work,
+                    detector_generation: 0,
                     process_exited: false,
                     observed_at: Instant::now(),
                 })
@@ -10806,6 +10810,7 @@ next_tab = ""
                 visible_blocker: false,
                 visible_working: false,
                 background_work: false,
+                detector_generation: 0,
                 process_exited: false,
                 observed_at: Instant::now(),
             })

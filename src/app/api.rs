@@ -1775,6 +1775,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -1785,6 +1786,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -1870,6 +1872,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -1880,6 +1883,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -1987,6 +1991,7 @@ mod tests {
                 visible_blocker: false,
                 visible_working: false,
                 background_work: false,
+                detector_generation: 0,
                 process_exited: true,
                 observed_at: std::time::Instant::now(),
             });
@@ -2037,6 +2042,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: true,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -2100,6 +2106,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: true,
             observed_at,
         });
@@ -2274,6 +2281,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: true,
             observed_at: std::time::Instant::now(),
         });
@@ -2341,6 +2349,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -2362,6 +2371,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });

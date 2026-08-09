@@ -2843,20 +2843,24 @@ impl AppState {
                 visible_blocker,
                 visible_working,
                 background_work,
+                detector_generation,
                 process_exited,
                 observed_at,
             } => self
                 .update_terminal_state(pane_id, |terminal| {
-                    Some(terminal.set_detected_state_with_background_work_at(
-                        agent,
-                        state,
-                        visible_blocker,
-                        false,
-                        visible_working,
-                        background_work,
-                        process_exited,
-                        observed_at,
-                    ))
+                    Some(
+                        terminal.set_detected_state_with_background_work_generation_at(
+                            agent,
+                            state,
+                            visible_blocker,
+                            false,
+                            visible_working,
+                            background_work,
+                            detector_generation,
+                            process_exited,
+                            observed_at,
+                        ),
+                    )
                 })
                 .into_iter()
                 .collect(),
@@ -4930,6 +4934,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4969,6 +4974,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5005,6 +5011,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: true,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5024,6 +5031,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5047,6 +5055,7 @@ mod tests {
                 visible_blocker: false,
                 visible_working: false,
                 background_work,
+                detector_generation: 0,
                 process_exited: false,
                 observed_at: std::time::Instant::now(),
             });
@@ -5078,6 +5087,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: true,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5089,13 +5099,118 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: true,
             observed_at: std::time::Instant::now(),
         });
 
-        assert!(updates.iter().all(|update| !update.deferred_completion));
+        assert_eq!(
+            updates
+                .iter()
+                .filter(|update| update.deferred_completion)
+                .count(),
+            0
+        );
         assert!(!state.terminals[&terminal_id].deferred_completion_owed());
         assert!(state.toast.is_none());
+    }
+
+    #[test]
+    fn occupant_replacement_discards_completion_debt() {
+        let mut state = app_with_workspaces(&["active", "background"]);
+        let pane_id = state.workspaces[1].tabs[0].root_pane;
+        let terminal_id = state.workspaces[1]
+            .pane_state(pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .set_detected_state(Some(Agent::Pi), AgentState::Working);
+
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: true,
+            detector_generation: 7,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+        assert!(state.terminals[&terminal_id].deferred_completion_owed());
+
+        let updates = state.handle_app_event(AppEvent::StateChanged {
+            pane_id,
+            agent: Some(Agent::Claude),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: false,
+            detector_generation: 8,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+
+        assert_eq!(
+            updates
+                .iter()
+                .filter(|update| update.deferred_completion)
+                .count(),
+            0
+        );
+        assert!(!state.terminals[&terminal_id].deferred_completion_owed());
+    }
+
+    #[test]
+    fn detector_reset_discards_same_agent_completion_debt() {
+        let mut state = app_with_workspaces(&["active", "background"]);
+        let pane_id = state.workspaces[1].tabs[0].root_pane;
+        let terminal_id = state.workspaces[1]
+            .pane_state(pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .set_detected_state(Some(Agent::Pi), AgentState::Working);
+
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: true,
+            detector_generation: 11,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+        let updates = state.handle_app_event(AppEvent::StateChanged {
+            pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: false,
+            detector_generation: 12,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+
+        assert_eq!(
+            updates
+                .iter()
+                .filter(|update| update.deferred_completion)
+                .count(),
+            0
+        );
+        assert!(!state.terminals[&terminal_id].deferred_completion_owed());
     }
 
     #[test]
@@ -5120,6 +5235,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5143,6 +5259,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5165,6 +5282,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5175,6 +5293,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5221,6 +5340,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5246,6 +5366,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5279,6 +5400,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5291,6 +5413,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: true,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5319,6 +5442,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5331,6 +5455,7 @@ mod tests {
             visible_blocker: false,
             visible_working: true,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5355,6 +5480,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5381,6 +5507,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5409,6 +5536,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5465,6 +5593,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5484,6 +5613,7 @@ mod tests {
             visible_blocker: true,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5515,6 +5645,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5539,6 +5670,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5566,6 +5698,7 @@ mod tests {
             visible_blocker: false,
             visible_working: true,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5627,6 +5760,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5760,6 +5894,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5790,6 +5925,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5817,6 +5953,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5841,6 +5978,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5863,6 +6001,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
