@@ -87,6 +87,12 @@ fn write_local_codex(content: &str) {
     reload_manifests();
 }
 
+fn write_local_codex_without_reload(content: &str) {
+    let path = override_path(Agent::Codex).unwrap();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, content).unwrap();
+}
+
 #[test]
 fn known_agent_no_match_defaults_to_idle_fallback() {
     let explain = explain(Agent::Codex, "ordinary prompt text");
@@ -590,8 +596,209 @@ contains = ["active"]
     assert!(parse_manifest(manifest).is_err());
 }
 
+#[test]
+fn background_work_requires_engine_four_when_declared() {
+    let engine_three = r#"
+id = "codex"
+version = "1"
+min_engine_version = 3
+
+[[rules]]
+id = "background"
+background_work = true
+contains = ["active"]
+"#;
+
+    let error = parse_manifest(engine_three).unwrap_err();
+    assert!(error.contains("background_work"));
+    assert!(parse_manifest(
+        &engine_three.replace("min_engine_version = 3", "min_engine_version = 4")
+    )
+    .is_ok());
+}
+
+#[test]
+fn stateless_background_rule_never_wins_state_arbitration() {
+    with_manifest_dirs("background-work-arbitration", || {
+        write_local_codex(&rules_manifest(
+            r#"
+[[rules]]
+id = "idle_prompt"
+state = "idle"
+priority = 1
+contains = ["prompt"]
+
+[[rules]]
+id = "background_signal"
+priority = 1000
+background_work = true
+contains = ["job"]
+"#,
+        ));
+
+        let explanation = explain(Agent::Codex, "prompt job");
+        assert_eq!(explanation.state, AgentState::Idle);
+        assert!(explanation.background_work);
+        assert_eq!(
+            explanation
+                .matched_rule
+                .as_ref()
+                .map(|rule| rule.id.as_str()),
+            Some("idle_prompt")
+        );
+    });
+}
+
+#[test]
+fn background_work_ors_across_all_matched_rules() {
+    with_manifest_dirs("background-work-or", || {
+        write_local_codex(&rules_manifest(
+            r#"
+[[rules]]
+id = "state"
+state = "working"
+priority = 10
+contains = ["state"]
+
+[[rules]]
+id = "first_background"
+background_work = true
+contains = ["first"]
+
+[[rules]]
+id = "second_background"
+background_work = true
+contains = ["second"]
+"#,
+        ));
+
+        assert!(explain(Agent::Codex, "state first").background_work);
+        assert!(explain(Agent::Codex, "state second").background_work);
+        assert!(explain(Agent::Codex, "state first second").background_work);
+        assert!(!explain(Agent::Codex, "state").background_work);
+    });
+}
+
+#[test]
+fn skip_state_update_rule_cannot_contribute_background_work() {
+    with_manifest_dirs("background-work-skip-state", || {
+        write_local_codex(&rules_manifest(
+            r#"
+[[rules]]
+id = "history_viewer"
+state = "unknown"
+priority = 100
+skip_state_update = true
+background_work = true
+contains = ["history"]
+"#,
+        ));
+
+        let explanation = explain(Agent::Codex, "history");
+        assert!(explanation.skip_state_update);
+        assert!(!explanation.background_work);
+        let json = explain_to_json_value(&explanation);
+        assert_eq!(json["background_work_rules"], serde_json::json!([]));
+    });
+}
+
+#[test]
+fn absent_background_work_defaults_false_for_old_manifest() {
+    with_manifest_dirs("background-work-default", || {
+        write_local_codex(&local_manifest("idle", "ready"));
+
+        let explanation = explain(Agent::Codex, "ready");
+        assert_eq!(explanation.state, AgentState::Idle);
+        assert!(!explanation.background_work);
+    });
+}
+
+#[test]
+fn cache_reload_preserves_background_work_field() {
+    with_manifest_dirs("background-work-cache", || {
+        write_local_codex(&local_manifest("idle", "ready"));
+        assert!(!explain(Agent::Codex, "ready active").background_work);
+
+        write_local_codex_without_reload(&rules_manifest(
+            r#"
+[[rules]]
+id = "idle"
+state = "idle"
+contains = ["ready"]
+
+[[rules]]
+id = "background"
+background_work = true
+contains = ["active"]
+"#,
+        ));
+        assert!(!explain(Agent::Codex, "ready active").background_work);
+
+        reload_manifests();
+        assert!(explain(Agent::Codex, "ready active").background_work);
+    });
+}
+
+#[test]
+fn local_override_background_work_wins_over_remote_source() {
+    with_manifest_dirs("background-work-source-precedence", || {
+        write_remote_codex(
+            r#"
+id = "codex"
+version = "9999.01.01.1"
+min_engine_version = 4
+
+[[rules]]
+id = "remote_state"
+state = "idle"
+contains = ["ready"]
+
+[[rules]]
+id = "remote_background"
+background_work = true
+contains = ["active"]
+"#,
+        );
+        assert!(explain(Agent::Codex, "ready active").background_work);
+
+        write_local_codex(&local_manifest("idle", "ready"));
+        let explanation = explain(Agent::Codex, "ready active");
+        assert!(matches!(
+            explanation.source,
+            Some(ManifestSource::Override(_))
+        ));
+        assert!(!explanation.background_work);
+    });
+}
+
+#[test]
+fn explain_json_reports_background_signal_and_contributors() {
+    with_manifest_dirs("background-work-explain", || {
+        write_local_codex(&rules_manifest(
+            r#"
+[[rules]]
+id = "idle"
+state = "idle"
+contains = ["ready"]
+
+[[rules]]
+id = "background"
+background_work = true
+contains = ["active"]
+"#,
+        ));
+
+        let json = explain_to_json_value(&explain(Agent::Codex, "ready active"));
+        assert_eq!(json["background_work"], true);
+        assert_eq!(
+            json["background_work_rules"],
+            serde_json::json!(["background"])
+        );
+    });
+}
+
 // ---------------------------------------------------------------------------
-// OSC rule tests — exercise the new osc_title / osc_progress regions against
+// OSC rule tests: exercise the new osc_title / osc_progress regions against
 // the bundled Claude and Codex manifests.
 // ---------------------------------------------------------------------------
 

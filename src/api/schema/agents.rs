@@ -197,6 +197,8 @@ pub struct AgentInfo {
     pub display_agent: Option<String>,
     pub agent_status: AgentStatus,
     #[serde(default, skip_serializing_if = "super::is_false")]
+    pub background_work: bool,
+    #[serde(default, skip_serializing_if = "super::is_false")]
     pub screen_detection_skipped: bool,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub state_labels: HashMap<String, String>,

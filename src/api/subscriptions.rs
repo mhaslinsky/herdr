@@ -64,6 +64,8 @@ pub(super) struct ActiveScrollChangedSubscription {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PanePresentationSnapshot {
+    // Background-only changes use pane.updated. They do not alter this snapshot or emit
+    // pane.agent_status_changed because the agent status and its presentation are unchanged.
     title: Option<String>,
     display_agent: Option<String>,
     state_labels: std::collections::HashMap<String, String>,
@@ -668,6 +670,7 @@ mod tests {
             terminal_title_stripped: None,
             display_agent: None,
             agent_status: AgentStatus::Unknown,
+            background_work: false,
             state_labels: HashMap::new(),
             tokens: HashMap::new(),
             agent_session: None,

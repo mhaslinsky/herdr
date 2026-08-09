@@ -156,6 +156,24 @@ fn print_agent_explain_text(explain: &serde_json::Value, verbose: bool) {
     println!("agent: {}", explain["agent"].as_str().unwrap_or("unknown"));
     println!("state: {}", explain["state"].as_str().unwrap_or("unknown"));
     println!(
+        "background_work: {}",
+        explain["background_work"].as_bool().unwrap_or(false)
+    );
+    let background_rules = explain["background_work_rules"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|rule| rule.as_str())
+        .collect::<Vec<_>>();
+    println!(
+        "background_work_rules: {}",
+        if background_rules.is_empty() {
+            "none".to_string()
+        } else {
+            background_rules.join(", ")
+        }
+    );
+    println!(
         "manifest: {} {}",
         explain["manifest_source"].as_str().unwrap_or("none"),
         explain["manifest_version"].as_str().unwrap_or("unknown")
@@ -227,7 +245,7 @@ fn print_agent_explain_text(explain: &serde_json::Value, verbose: bool) {
         println!("evaluated_rules:");
         for rule in evaluated_rules {
             println!(
-                "  {} {} priority={} region={} state={}",
+                "  {} {} priority={} region={} state={} background_work={}",
                 if rule["matched"].as_bool().unwrap_or(false) {
                     "✓"
                 } else {
@@ -236,7 +254,8 @@ fn print_agent_explain_text(explain: &serde_json::Value, verbose: bool) {
                 rule["id"].as_str().unwrap_or("-"),
                 rule["priority"].as_i64().unwrap_or(0),
                 rule["region"].as_str().unwrap_or("-"),
-                rule["state"].as_str().unwrap_or("unknown")
+                rule["state"].as_str().unwrap_or("unknown"),
+                rule["background_work"].as_bool().unwrap_or(false)
             );
             let evidence = &rule["evidence"];
             println!(

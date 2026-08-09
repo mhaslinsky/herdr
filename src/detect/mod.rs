@@ -36,6 +36,9 @@ pub struct AgentDetection {
     /// activity is the normal working authority; this remains diagnostic
     /// metadata and for non-PTY fallback paths.
     pub visible_working: bool,
+    /// Whether matched manifest rules report outstanding background work.
+    /// This signal is orthogonal to `state`.
+    pub background_work: bool,
 }
 
 /// Which agent we detected running in a pane.
@@ -270,6 +273,7 @@ pub fn detect_agent_with_osc(
             visible_idle: false,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
         };
     };
     manifest::detect_with_osc(

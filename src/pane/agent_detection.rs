@@ -18,6 +18,7 @@ pub(super) struct DetectionPublishState {
     pub(super) visible_idle: bool,
     pub(super) visible_blocker: bool,
     pub(super) visible_working: bool,
+    pub(super) background_work: bool,
 }
 
 #[derive(Debug, Default)]
@@ -148,6 +149,7 @@ pub(super) fn should_publish_detection_update(
         || next.visible_idle != previous.visible_idle
         || next.visible_blocker != previous.visible_blocker
         || next.visible_working != previous.visible_working
+        || next.background_work != previous.background_work
         || agent_changed
         || process_exited
         || (stable_visible_signal_refresh_due && next.visible_blocker && previous.visible_blocker)
@@ -218,6 +220,7 @@ pub(super) enum DetectionPublishDecision {
         visible_idle: bool,
         visible_blocker: bool,
         visible_working: bool,
+        background_work: bool,
         process_exited: bool,
     },
 }
@@ -228,6 +231,7 @@ pub(super) struct ScreenDetectionPublishInput {
     pub(super) last_visible_idle: bool,
     pub(super) last_visible_blocker: bool,
     pub(super) last_visible_working: bool,
+    pub(super) last_background_work: bool,
     pub(super) last_visible_signal_refresh: Option<std::time::Instant>,
     pub(super) screen_detection: AgentDetection,
     pub(super) process_exited: bool,
@@ -250,12 +254,14 @@ pub(super) fn decide_screen_detection_publish(
         visible_idle: input.last_visible_idle,
         visible_blocker: input.last_visible_blocker,
         visible_working: input.last_visible_working,
+        background_work: input.last_background_work,
     };
     let next_publish = DetectionPublishState {
         state: new_state,
         visible_idle,
         visible_blocker,
         visible_working,
+        background_work: detection.background_work,
     };
     let stable_refresh_due = stable_visible_signal_refresh_due(
         previous_publish,
@@ -281,6 +287,7 @@ pub(super) fn decide_screen_detection_publish(
             visible_idle,
             visible_blocker,
             visible_working,
+            background_work: detection.background_work,
             process_exited: input.process_exited,
         },
     }
@@ -309,6 +316,7 @@ pub(super) fn detection_update_for_publish_with_osc(
             visible_idle: true,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
         });
     }
 
@@ -336,6 +344,7 @@ mod tests {
             visible_idle: false,
             visible_blocker: false,
             visible_working: false,
+            background_work: false,
         }
     }
 
@@ -346,6 +355,7 @@ mod tests {
             visible_idle: state == AgentState::Idle,
             visible_blocker: false,
             visible_working: state == AgentState::Working,
+            background_work: false,
         }
     }
 
@@ -359,6 +369,7 @@ mod tests {
             last_visible_idle: false,
             last_visible_blocker: false,
             last_visible_working: false,
+            last_background_work: false,
             last_visible_signal_refresh: None,
             screen_detection,
             process_exited: false,
@@ -492,6 +503,30 @@ mod tests {
     }
 
     #[test]
+    fn transition_decision_publishes_background_only_change() {
+        let now = std::time::Instant::now();
+        let mut pending_idle = PendingIdleConfirmation::default();
+        let previous = publish_state(AgentState::Idle);
+        let mut next = previous;
+        next.background_work = true;
+
+        assert_eq!(
+            decide_detection_transition(
+                DetectionTransitionInput {
+                    previous_publish: previous,
+                    next_publish: next,
+                    agent_changed: false,
+                    process_exited: false,
+                    stable_refresh_due: false,
+                    now,
+                },
+                &mut pending_idle,
+            ),
+            DetectionTransitionDecision::PublishNext
+        );
+    }
+
+    #[test]
     fn screen_publish_keeps_visible_working_without_pty_activity() {
         let now = std::time::Instant::now();
         let mut pending_idle = PendingIdleConfirmation::default();
@@ -506,6 +541,7 @@ mod tests {
                 visible_idle: false,
                 visible_blocker: false,
                 visible_working: true,
+                background_work: false,
                 process_exited: false,
             }
         );
@@ -526,6 +562,7 @@ mod tests {
                 visible_idle: true,
                 visible_blocker: false,
                 visible_working: false,
+                background_work: false,
                 process_exited: false,
             }
         );
