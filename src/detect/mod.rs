@@ -528,7 +528,33 @@ fn agent_name_from_path_token(token: &str) -> Option<String> {
 
     agent_name_from_basename(path_basename(trimmed))
         .or_else(|| agent_name_from_known_package_path(trimmed))
+        .or_else(|| agent_name_from_versioned_install_path(trimmed))
         .or_else(|| resolved_agent_name_from_path_token(trimmed))
+}
+
+/// Needed because a launcher that execs an agent's resolved release path leaves
+/// no agent name anywhere in the process table for the other matchers to find.
+fn agent_name_from_versioned_install_path(path: &str) -> Option<String> {
+    let mut ancestors = path
+        .split(['/', '\\'])
+        .filter(|component| !component.is_empty())
+        .rev();
+
+    if !is_version_component(ancestors.next()?) {
+        return None;
+    }
+    if normalized_agent_lookup_name(ancestors.next()?) != "versions" {
+        return None;
+    }
+
+    agent_name_from_basename(ancestors.next()?)
+}
+
+/// Rejecting a non-numeric component stops a path like `versions/current` from
+/// binding whatever unrelated program happens to live there.
+fn is_version_component(component: &str) -> bool {
+    let digits = component.strip_prefix('v').unwrap_or(component);
+    digits.starts_with(|character: char| character.is_ascii_digit()) && digits.contains('.')
 }
 
 fn agent_name_from_known_package_path(path: &str) -> Option<String> {
@@ -1221,6 +1247,64 @@ mod tests {
     #[test]
     fn cmdline_argv0_agent_name_requires_exact_agent_basename() {
         assert_eq!(cmdline_argv0_agent_name("/tmp/my-codex-helper"), None);
+    }
+
+    #[test]
+    fn agent_name_from_path_token_reads_versioned_install_directory() {
+        assert_eq!(
+            agent_name_from_path_token("/home/user/.local/share/claude/versions/2.1.226"),
+            Some("claude".to_string())
+        );
+        assert_eq!(
+            agent_name_from_path_token(r"C:\Users\user\.local\share\claude\versions\v2.1.226"),
+            Some("claude".to_string())
+        );
+        assert_eq!(
+            agent_name_from_path_token("/opt/codex/versions/1.0.0-rc.1"),
+            Some("codex".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_name_from_path_token_requires_the_full_versioned_install_shape() {
+        assert_eq!(
+            agent_name_from_path_token("/opt/some-tool/versions/2.1.226"),
+            None
+        );
+        assert_eq!(
+            agent_name_from_path_token("/home/user/claude/releases/2.1.226"),
+            None
+        );
+        assert_eq!(
+            agent_name_from_path_token("/home/user/claude/versions/current"),
+            None
+        );
+    }
+
+    #[test]
+    fn identify_agent_in_job_detects_agent_launched_by_resolved_path() {
+        let job = crate::platform::ForegroundJob {
+            process_group_id: 42,
+            processes: vec![crate::platform::ForegroundProcess {
+                pid: 42,
+                name: "2.1.226".to_string(),
+                argv0: Some("2.1.226".to_string()),
+                argv: Some(vec![
+                    "/home/user/.local/share/claude/versions/2.1.226".to_string(),
+                    "--resume".to_string(),
+                    "235e2fd6-c997-4f07-bae8-3cbf74a9f92b".to_string(),
+                ]),
+                cmdline: Some(
+                    "/home/user/.local/share/claude/versions/2.1.226 --resume 235e2fd6-c997-4f07-bae8-3cbf74a9f92b"
+                        .to_string(),
+                ),
+            }],
+        };
+
+        assert_eq!(
+            identify_agent_in_job(&job),
+            Some((Agent::Claude, "claude".to_string()))
+        );
     }
 
     #[cfg(unix)]
