@@ -529,6 +529,65 @@ fn agent_name_from_path_token(token: &str) -> Option<String> {
     agent_name_from_basename(path_basename(trimmed))
         .or_else(|| agent_name_from_known_package_path(trimmed))
         .or_else(|| resolved_agent_name_from_path_token(trimmed))
+        .or_else(|| agent_name_from_versioned_install_path(trimmed))
+}
+
+/// Needed because a launcher that execs an agent's resolved release path leaves
+/// no agent name anywhere in the process table for the other matchers to find.
+fn agent_name_from_versioned_install_path(path: &str) -> Option<String> {
+    let mut ancestors = path
+        .split(['/', '\\'])
+        .filter(|component| !component.is_empty())
+        .rev();
+
+    if !is_version_component(ancestors.next()?) {
+        return None;
+    }
+    if normalized_agent_lookup_name(ancestors.next()?) != "versions" {
+        return None;
+    }
+
+    agent_name_from_basename(ancestors.next()?)
+}
+
+/// Rejecting a non-numeric component stops a path like `versions/current` from
+/// binding whatever unrelated program happens to live there.
+fn is_version_component(component: &str) -> bool {
+    let version = component.strip_prefix('v').unwrap_or(component);
+    let (version_without_build, build) = version
+        .split_once('+')
+        .map_or((version, None), |(release, build)| (release, Some(build)));
+    if build.is_some_and(|build| !is_version_identifier_list(build)) {
+        return false;
+    }
+
+    let (release, prerelease) = version_without_build
+        .split_once('-')
+        .map_or((version_without_build, None), |(release, prerelease)| {
+            (release, Some(prerelease))
+        });
+    if prerelease.is_some_and(|prerelease| !is_version_identifier_list(prerelease)) {
+        return false;
+    }
+
+    let release_components = release.split('.');
+    release_components.clone().count() >= 2
+        && release_components.into_iter().all(|release_component| {
+            !release_component.is_empty()
+                && release_component
+                    .chars()
+                    .all(|character| character.is_ascii_digit())
+        })
+}
+
+fn is_version_identifier_list(value: &str) -> bool {
+    !value.is_empty()
+        && value.split('.').all(|identifier| {
+            !identifier.is_empty()
+                && identifier
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '-')
+        })
 }
 
 fn agent_name_from_known_package_path(path: &str) -> Option<String> {
@@ -1221,6 +1280,96 @@ mod tests {
     #[test]
     fn cmdline_argv0_agent_name_requires_exact_agent_basename() {
         assert_eq!(cmdline_argv0_agent_name("/tmp/my-codex-helper"), None);
+    }
+
+    #[test]
+    fn agent_name_from_path_token_reads_versioned_install_directory() {
+        assert_eq!(
+            agent_name_from_path_token("/home/user/.local/share/claude/versions/2.1.226"),
+            Some("claude".to_string())
+        );
+        assert_eq!(
+            agent_name_from_path_token(r"C:\Users\user\.local\share\claude\versions\v2.1.226"),
+            Some("claude".to_string())
+        );
+        assert_eq!(
+            agent_name_from_path_token("/opt/codex/versions/1.0.0-rc.1"),
+            Some("codex".to_string())
+        );
+        assert_eq!(
+            agent_name_from_path_token("/opt/codex/versions/1.0.0+build.1"),
+            Some("codex".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_name_from_path_token_requires_the_full_versioned_install_shape() {
+        assert_eq!(
+            agent_name_from_path_token("/opt/some-tool/versions/2.1.226"),
+            None
+        );
+        assert_eq!(
+            agent_name_from_path_token("/home/user/claude/releases/2.1.226"),
+            None
+        );
+        assert_eq!(
+            agent_name_from_path_token("/home/user/claude/versions/current"),
+            None
+        );
+        assert_eq!(
+            agent_name_from_path_token("/home/user/claude/versions/2.backup"),
+            None
+        );
+        assert_eq!(
+            agent_name_from_path_token("/home/user/claude/versions/2."),
+            None
+        );
+    }
+
+    #[test]
+    fn identify_agent_in_job_detects_agent_launched_by_resolved_path() {
+        let job = crate::platform::ForegroundJob {
+            process_group_id: 42,
+            processes: vec![crate::platform::ForegroundProcess {
+                pid: 42,
+                name: "2.1.226".to_string(),
+                argv0: Some("2.1.226".to_string()),
+                argv: Some(vec![
+                    "/home/user/.local/share/claude/versions/2.1.226".to_string(),
+                    "--resume".to_string(),
+                    "235e2fd6-c997-4f07-bae8-3cbf74a9f92b".to_string(),
+                ]),
+                cmdline: Some(
+                    "/home/user/.local/share/claude/versions/2.1.226 --resume 235e2fd6-c997-4f07-bae8-3cbf74a9f92b"
+                        .to_string(),
+                ),
+            }],
+        };
+
+        assert_eq!(
+            identify_agent_in_job(&job),
+            Some((Agent::Claude, "claude".to_string()))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn agent_name_from_path_token_prefers_resolved_versioned_symlink_target() {
+        let directory = temp_detection_path("versioned-agent-symlink");
+        let version_directory = directory.join("claude").join("versions");
+        let target = directory.join("cursor-agent");
+        let link = version_directory.join("2.1.226");
+        std::fs::create_dir_all(&version_directory).expect("version directory should be created");
+        std::fs::write(&target, b"#!/bin/sh\n").expect("target should be written");
+        std::os::unix::fs::symlink(&target, &link).expect("symlink should be created");
+
+        let token = link.to_string_lossy();
+        assert_eq!(
+            agent_name_from_path_token(&token),
+            Some("cursor".to_string())
+        );
+
+        std::fs::remove_dir_all(&directory).ok();
     }
 
     #[cfg(unix)]
