@@ -528,8 +528,8 @@ fn agent_name_from_path_token(token: &str) -> Option<String> {
 
     agent_name_from_basename(path_basename(trimmed))
         .or_else(|| agent_name_from_known_package_path(trimmed))
-        .or_else(|| agent_name_from_versioned_install_path(trimmed))
         .or_else(|| resolved_agent_name_from_path_token(trimmed))
+        .or_else(|| agent_name_from_versioned_install_path(trimmed))
 }
 
 /// Needed because a launcher that execs an agent's resolved release path leaves
@@ -553,8 +553,41 @@ fn agent_name_from_versioned_install_path(path: &str) -> Option<String> {
 /// Rejecting a non-numeric component stops a path like `versions/current` from
 /// binding whatever unrelated program happens to live there.
 fn is_version_component(component: &str) -> bool {
-    let digits = component.strip_prefix('v').unwrap_or(component);
-    digits.starts_with(|character: char| character.is_ascii_digit()) && digits.contains('.')
+    let version = component.strip_prefix('v').unwrap_or(component);
+    let (version_without_build, build) = version
+        .split_once('+')
+        .map_or((version, None), |(release, build)| (release, Some(build)));
+    if build.is_some_and(|build| !is_version_identifier_list(build)) {
+        return false;
+    }
+
+    let (release, prerelease) = version_without_build
+        .split_once('-')
+        .map_or((version_without_build, None), |(release, prerelease)| {
+            (release, Some(prerelease))
+        });
+    if prerelease.is_some_and(|prerelease| !is_version_identifier_list(prerelease)) {
+        return false;
+    }
+
+    let release_components = release.split('.');
+    release_components.clone().count() >= 2
+        && release_components.into_iter().all(|release_component| {
+            !release_component.is_empty()
+                && release_component
+                    .chars()
+                    .all(|character| character.is_ascii_digit())
+        })
+}
+
+fn is_version_identifier_list(value: &str) -> bool {
+    !value.is_empty()
+        && value.split('.').all(|identifier| {
+            !identifier.is_empty()
+                && identifier
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '-')
+        })
 }
 
 fn agent_name_from_known_package_path(path: &str) -> Option<String> {
@@ -1263,6 +1296,10 @@ mod tests {
             agent_name_from_path_token("/opt/codex/versions/1.0.0-rc.1"),
             Some("codex".to_string())
         );
+        assert_eq!(
+            agent_name_from_path_token("/opt/codex/versions/1.0.0+build.1"),
+            Some("codex".to_string())
+        );
     }
 
     #[test]
@@ -1277,6 +1314,14 @@ mod tests {
         );
         assert_eq!(
             agent_name_from_path_token("/home/user/claude/versions/current"),
+            None
+        );
+        assert_eq!(
+            agent_name_from_path_token("/home/user/claude/versions/2.backup"),
+            None
+        );
+        assert_eq!(
+            agent_name_from_path_token("/home/user/claude/versions/2."),
             None
         );
     }
@@ -1305,6 +1350,26 @@ mod tests {
             identify_agent_in_job(&job),
             Some((Agent::Claude, "claude".to_string()))
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn agent_name_from_path_token_prefers_resolved_versioned_symlink_target() {
+        let directory = temp_detection_path("versioned-agent-symlink");
+        let version_directory = directory.join("claude").join("versions");
+        let target = directory.join("cursor-agent");
+        let link = version_directory.join("2.1.226");
+        std::fs::create_dir_all(&version_directory).expect("version directory should be created");
+        std::fs::write(&target, b"#!/bin/sh\n").expect("target should be written");
+        std::os::unix::fs::symlink(&target, &link).expect("symlink should be created");
+
+        let token = link.to_string_lossy();
+        assert_eq!(
+            agent_name_from_path_token(&token),
+            Some("cursor".to_string())
+        );
+
+        std::fs::remove_dir_all(&directory).ok();
     }
 
     #[cfg(unix)]
