@@ -2273,6 +2273,7 @@ mod tests {
             visible_blocker: true,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });

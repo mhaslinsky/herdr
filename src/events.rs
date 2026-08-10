@@ -76,6 +76,7 @@ pub enum AppEvent {
         visible_blocker: bool,
         visible_working: bool,
         background_work: bool,
+        detector_generation: u64,
         process_exited: bool,
         observed_at: Instant,
     },

@@ -1,7 +1,7 @@
 id = "grok"
-version = "2026.07.16.1"
-min_engine_version = 2
-updated_at = "2026-07-16T00:00:00Z"
+version = "2026.09.14.1"
+min_engine_version = 4
+updated_at = "2026-09-14T00:00:00Z"
 aliases = ["grok-build"]
 
 # Evidence: Grok Build 0.2.101 source and live pane reads.
@@ -73,6 +73,17 @@ any = [
   { contains = ["use ← → to choose permission whitelist scope"] },
   { contains = ["←/→:scope"] },
 ]
+
+# Grok clears its OSC busy signals while background work runs. The first
+# non-empty row is pinned application chrome, where this animated chip shows
+# the number of running background tasks and disappears when the count is zero.
+[[rules]]
+id = "background_work_chip_working"
+background_work = true
+priority = 1170
+region = "top_non_empty_lines(1)"
+visible_working = true
+line_regex = ['[⋅:⸬⁙.·]\s+[1-9][0-9]*\s+│']
 
 [[rules]]
 id = "osc_progress_working"

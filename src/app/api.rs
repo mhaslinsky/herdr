@@ -639,6 +639,46 @@ impl App {
         });
     }
 
+    fn released_agent_info(
+        &self,
+        update: &crate::app::actions::PaneStateUpdate,
+    ) -> Option<crate::api::schema::AgentInfo> {
+        let terminal_id = self
+            .state
+            .workspaces
+            .get(update.ws_idx)?
+            .pane_state(update.pane_id)?
+            .attached_terminal_id
+            .clone();
+        let terminal = self.state.terminals.get(&terminal_id)?;
+        let pane = self.pane_info(update.ws_idx, update.pane_id)?;
+        Some(crate::api::schema::AgentInfo {
+            terminal_id: pane.terminal_id,
+            name: update.released_agent_name.clone(),
+            agent: update.agent_label.clone(),
+            title: pane.title,
+            terminal_title: pane.terminal_title,
+            terminal_title_stripped: pane.terminal_title_stripped,
+            display_agent: pane.display_agent,
+            agent_status: update.agent_release_status?,
+            background_work: pane.background_work,
+            screen_detection_skipped: terminal.full_lifecycle_hook_authority_active(),
+            state_labels: pane.state_labels,
+            tokens: pane.tokens,
+            agent_session: pane.agent_session,
+            workspace_id: pane.workspace_id,
+            tab_id: pane.tab_id,
+            pane_id: pane.pane_id,
+            focused: pane.focused,
+            launch_pending: terminal.managed_agent_launch_pending(),
+            interactive_ready: terminal.managed_agent_interactive_ready(),
+            state_change_seq: terminal.last_agent_state_change_seq.unwrap_or(0),
+            cwd: pane.cwd,
+            foreground_cwd: pane.foreground_cwd,
+            revision: pane.revision,
+        })
+    }
+
     pub(crate) fn emit_pane_state_update(&mut self, update: &crate::app::actions::PaneStateUpdate) {
         let Some(pane_id) = self.public_pane_id(update.ws_idx, update.pane_id) else {
             return;
@@ -650,6 +690,11 @@ impl App {
         }
 
         if update.previous_agent_label != update.agent_label || update.agent_released {
+            let final_agent = update
+                .agent_released
+                .then(|| self.released_agent_info(update))
+                .flatten()
+                .map(Box::new);
             self.emit_event(crate::api::schema::EventEnvelope {
                 event: crate::api::schema::EventKind::PaneAgentDetected,
                 data: crate::api::schema::EventData::PaneAgentDetected {
@@ -658,6 +703,7 @@ impl App {
                     agent: update.agent_label.clone(),
                     released: update.agent_released,
                     final_status: update.agent_release_status,
+                    final_agent,
                 },
             });
         }
@@ -1864,6 +1910,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -1874,6 +1921,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -1959,6 +2007,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -1969,6 +2018,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -2086,6 +2136,7 @@ mod tests {
                 visible_blocker: false,
                 visible_working: false,
                 background_work: false,
+                detector_generation: 0,
                 process_exited: true,
                 observed_at: std::time::Instant::now(),
             });
@@ -2096,8 +2147,11 @@ mod tests {
                 crate::api::schema::EventData::PaneAgentDetected {
                     released: true,
                     final_status: Some(crate::api::schema::AgentStatus::Idle),
+                    final_agent: Some(final_agent),
                     ..
-                }
+                } if final_agent.agent_status == crate::api::schema::AgentStatus::Idle
+                    && final_agent.agent.as_deref() == Some("pi")
+                    && final_agent.name.as_deref() == agent_name
             )));
         }
     }
@@ -2136,6 +2190,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: true,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -2199,6 +2254,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: true,
             observed_at,
         });
@@ -2380,6 +2436,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: true,
             observed_at: std::time::Instant::now(),
         });
@@ -2505,6 +2562,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -2526,6 +2584,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });

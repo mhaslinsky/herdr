@@ -1,9 +1,6 @@
 use std::path::PathBuf;
 
-use super::{
-    api_helpers::{pane_agent_status, tab_attention_priority},
-    App, Mode,
-};
+use super::{api_helpers::pane_agent_status, App, Mode};
 use crate::api::schema::{EventData, EventEnvelope, EventKind};
 use crate::{config::NewTerminalCwdConfig, workspace::Workspace};
 
@@ -206,17 +203,24 @@ impl App {
     ) -> Option<crate::api::schema::TabInfo> {
         let ws = self.state.workspaces.get(ws_idx)?;
         let tab = ws.tabs.get(tab_idx)?;
-        let (agg_state, seen) = tab
+        let (agg_state, seen, _) = tab
             .panes
             .values()
             .filter_map(|pane| {
                 self.state
                     .terminals
                     .get(&pane.attached_terminal_id)
-                    .map(|terminal| (terminal.state, pane.seen))
+                    .map(|terminal| {
+                        crate::workspace::AgentPresentation::from_parts(
+                            terminal.state,
+                            pane.seen,
+                            terminal.background_work,
+                        )
+                    })
             })
-            .max_by_key(|(state, seen)| tab_attention_priority(*state, *seen))
-            .unwrap_or((crate::detect::AgentState::Unknown, true));
+            .max_by_key(|presentation| presentation.attention_priority())
+            .unwrap_or(crate::workspace::AgentPresentation::Unknown)
+            .parts();
         Some(crate::api::schema::TabInfo {
             tab_id: self.public_tab_id(ws_idx, tab_idx)?,
             workspace_id: self.public_workspace_id(ws_idx),
@@ -378,7 +382,7 @@ impl App {
 
     pub(super) fn workspace_info(&self, index: usize) -> crate::api::schema::WorkspaceInfo {
         let ws = &self.state.workspaces[index];
-        let (agg_state, seen) = ws.aggregate_state(&self.state.terminals);
+        let (agg_state, seen, _) = ws.aggregate_presentation(&self.state.terminals).parts();
         crate::api::schema::WorkspaceInfo {
             workspace_id: self.public_workspace_id(index),
             number: index + 1,

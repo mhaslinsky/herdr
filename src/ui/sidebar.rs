@@ -23,6 +23,7 @@ pub(crate) struct AgentPanelEntry {
     pub agent_kind_label: Option<String>,
     pub state: AgentState,
     pub seen: bool,
+    pub background_work: bool,
     pub last_agent_state_change_seq: Option<u64>,
     pub tokens: std::collections::HashMap<String, String>,
 }
@@ -94,6 +95,7 @@ pub(crate) fn agent_panel_entries_from(
                     agent_kind_label: detail.agent_kind_label,
                     state: detail.state,
                     seen: detail.seen,
+                    background_work: detail.background_work,
                     last_agent_state_change_seq: detail.last_agent_state_change_seq,
                     tokens: detail.tokens,
                 })
@@ -101,6 +103,11 @@ pub(crate) fn agent_panel_entries_from(
         .collect();
     crate::app::agent_view::apply_agent_view(app, &mut entries);
     entries
+}
+
+#[cfg(test)]
+pub(crate) fn agent_panel_entries(app: &AppState) -> Vec<AgentPanelEntry> {
+    agent_panel_entries_from(app, &TerminalRuntimeRegistry::new())
 }
 
 pub(crate) fn resolved_token_spans(

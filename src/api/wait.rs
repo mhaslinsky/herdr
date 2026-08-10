@@ -159,8 +159,9 @@ pub(super) fn wait_for_agent(
             timeout_ms: params.timeout_ms,
             initial,
             last_event_sequence,
-            after_state_change_seq: None,
-            accept_transient_status: true,
+            match_kind: AgentWaitMatchKind::Settlement {
+                after_state_change_seq: None,
+            },
             timeout_kind: AgentWaitTimeoutKind::Status,
         },
         stream,
@@ -271,8 +272,9 @@ pub(super) fn prompt_agent(
                 timeout_ms: Some(effect_timeout_ms),
                 initial,
                 last_event_sequence,
-                after_state_change_seq: Some(prompt_state_change_seq),
-                accept_transient_status: true,
+                match_kind: AgentWaitMatchKind::PromptActivity {
+                    baseline: prompt_state_change_seq,
+                },
                 timeout_kind,
             },
             stream,
@@ -302,8 +304,9 @@ pub(super) fn prompt_agent(
             // Replay from before submission so terminal lifecycle events consumed by
             // the activity gate still terminate this settled-state wait.
             last_event_sequence,
-            after_state_change_seq: None,
-            accept_transient_status: false,
+            match_kind: AgentWaitMatchKind::Settlement {
+                after_state_change_seq: None,
+            },
             timeout_kind: AgentWaitTimeoutKind::Status,
         },
         stream,
@@ -345,9 +348,14 @@ struct ResolvedAgentWait {
     timeout_ms: Option<u64>,
     initial: crate::api::schema::AgentInfo,
     last_event_sequence: u64,
-    after_state_change_seq: Option<u64>,
-    accept_transient_status: bool,
+    match_kind: AgentWaitMatchKind,
     timeout_kind: AgentWaitTimeoutKind,
+}
+
+#[derive(Clone, Copy)]
+enum AgentWaitMatchKind {
+    Settlement { after_state_change_seq: Option<u64> },
+    PromptActivity { baseline: u64 },
 }
 
 #[derive(Clone, Copy)]
@@ -389,7 +397,7 @@ fn wait_for_resolved_agent(
         }
 
         let mut should_probe = false;
-        let mut matched_event_status = None;
+        let mut prompt_activity_event = false;
         for (sequence, event) in event_hub.events_after(last_event_sequence) {
             last_event_sequence = sequence;
             match event.data {
@@ -397,17 +405,20 @@ fn wait_for_resolved_agent(
                     pane_id: event_pane,
                     agent,
                     released,
-                    final_status,
+                    final_agent,
                     ..
                 } if event_pane == pane_id => {
                     if released {
-                        if let Some(status) = final_status
-                            .filter(|status| wait.until.contains(status))
-                            .or(matched_event_status)
-                        {
-                            let mut matched = wait.initial.clone();
-                            matched.agent_status = status;
-                            return Ok(Some(AgentWaitOutcome::Matched(Box::new(matched))));
+                        if let Some(final_agent) = final_agent {
+                            if agent_wait_identity_matches(
+                                &final_agent,
+                                &expected_terminal_id,
+                                expected_name.as_deref(),
+                                expected_agent.as_deref(),
+                            ) && resolved_agent_wait_matches(&wait, &final_agent, false)
+                            {
+                                return Ok(Some(AgentWaitOutcome::Matched(final_agent)));
+                            }
                         }
                         return agent_wait_not_running(request_id)
                             .map(AgentWaitOutcome::Response)
@@ -425,8 +436,14 @@ fn wait_for_resolved_agent(
                     agent_status,
                     ..
                 } if event_pane == pane_id => {
-                    if wait.accept_transient_status && wait.until.contains(&agent_status) {
-                        matched_event_status = Some(agent_status);
+                    if matches!(wait.match_kind, AgentWaitMatchKind::PromptActivity { .. })
+                        && matches!(
+                            agent_status,
+                            crate::api::schema::AgentStatus::Working
+                                | crate::api::schema::AgentStatus::Blocked
+                        )
+                    {
+                        prompt_activity_event = true;
                     }
                     should_probe = true;
                 }
@@ -473,12 +490,7 @@ fn wait_for_resolved_agent(
                     .map(AgentWaitOutcome::Response)
                     .map(Some);
             }
-            if let Some(status) = matched_event_status {
-                let mut matched = current;
-                matched.agent_status = status;
-                return Ok(Some(AgentWaitOutcome::Matched(Box::new(matched))));
-            }
-            if agent_wait_matches(&current, &wait.until, wait.after_state_change_seq) {
+            if resolved_agent_wait_matches(&wait, &current, prompt_activity_event) {
                 return Ok(Some(AgentWaitOutcome::Matched(Box::new(current))));
             }
         }
@@ -502,7 +514,7 @@ fn wait_for_resolved_agent(
                     .map(AgentWaitOutcome::Response)
                     .map(Some);
             }
-            if agent_wait_matches(&current, &wait.until, wait.after_state_change_seq) {
+            if resolved_agent_wait_matches(&wait, &current, false) {
                 return Ok(Some(AgentWaitOutcome::Matched(Box::new(current))));
             }
             return agent_wait_timeout(request_id, wait.timeout_kind, &current)
@@ -518,6 +530,27 @@ fn prompt_activity_statuses() -> Vec<crate::api::schema::AgentStatus> {
         crate::api::schema::AgentStatus::Working,
         crate::api::schema::AgentStatus::Blocked,
     ]
+}
+
+fn resolved_agent_wait_matches(
+    wait: &ResolvedAgentWait,
+    current: &crate::api::schema::AgentInfo,
+    prompt_activity_event: bool,
+) -> bool {
+    match wait.match_kind {
+        AgentWaitMatchKind::Settlement {
+            after_state_change_seq,
+        } => agent_wait_matches(current, &wait.until, after_state_change_seq),
+        AgentWaitMatchKind::PromptActivity { baseline } => {
+            current.state_change_seq > baseline
+                && (prompt_activity_event
+                    || matches!(
+                        current.agent_status,
+                        crate::api::schema::AgentStatus::Working
+                            | crate::api::schema::AgentStatus::Blocked
+                    ))
+        }
+    }
 }
 
 fn agent_wait_statuses(
@@ -555,6 +588,11 @@ fn agent_wait_matches(
     after_state_change_seq: Option<u64>,
 ) -> bool {
     until.contains(&agent.agent_status)
+        && !(agent.background_work
+            && matches!(
+                agent.agent_status,
+                crate::api::schema::AgentStatus::Idle | crate::api::schema::AgentStatus::Done
+            ))
         && after_state_change_seq.is_none_or(|baseline| agent.state_change_seq > baseline)
 }
 
@@ -824,6 +862,61 @@ fn wait_matched_response(request_id: &str, event: serde_json::Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn agent_info(
+        agent_status: crate::api::schema::AgentStatus,
+        background_work: bool,
+    ) -> crate::api::schema::AgentInfo {
+        crate::api::schema::AgentInfo {
+            terminal_id: "term_1".into(),
+            name: Some("worker".into()),
+            agent: Some("pi".into()),
+            title: None,
+            terminal_title: None,
+            terminal_title_stripped: None,
+            display_agent: None,
+            agent_status,
+            background_work,
+            screen_detection_skipped: false,
+            state_labels: std::collections::HashMap::new(),
+            tokens: std::collections::HashMap::new(),
+            agent_session: None,
+            workspace_id: "ws_1".into(),
+            tab_id: "tab_1".into(),
+            pane_id: "pane_1".into(),
+            focused: true,
+            launch_pending: false,
+            interactive_ready: true,
+            state_change_seq: 1,
+            cwd: None,
+            foreground_cwd: None,
+            revision: 1,
+        }
+    }
+
+    #[test]
+    fn background_work_blocks_idle_and_done_but_not_blocked_settlement() {
+        let defaults = agent_wait_statuses(Vec::new());
+        for status in [
+            crate::api::schema::AgentStatus::Idle,
+            crate::api::schema::AgentStatus::Done,
+        ] {
+            let waiting = agent_info(status, true);
+            assert!(!agent_wait_matches(&waiting, &defaults, None));
+            assert!(!agent_wait_matches(&waiting, &[status], None));
+            let cleared = agent_info(status, false);
+            assert!(agent_wait_matches(&cleared, &defaults, None));
+            assert!(agent_wait_matches(&cleared, &[status], None));
+        }
+
+        let blocked = agent_info(crate::api::schema::AgentStatus::Blocked, true);
+        assert!(agent_wait_matches(&blocked, &defaults, None));
+        assert!(agent_wait_matches(
+            &blocked,
+            &[crate::api::schema::AgentStatus::Blocked],
+            None,
+        ));
+    }
 
     #[test]
     fn agent_wait_probe_only_translates_agent_disappearance() {

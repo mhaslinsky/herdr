@@ -142,15 +142,10 @@ impl HeadlessServer {
             self.active_tab_suppresses_notifications(is_active_tab);
 
         if !update.suppress_completion && self.app.state.sound.allows(update.known_agent) {
-            if let Some(sound) =
-                crate::app::actions::notification_sound_for_state_change_with_agent_labels(
-                    suppress_active_tab_notifications,
-                    update.previous_state,
-                    update.state,
-                    update.previous_agent_label.as_deref(),
-                    update.agent_label.as_deref(),
-                )
-            {
+            if let Some(sound) = crate::app::actions::notification_sound_for_pane_state_update(
+                suppress_active_tab_notifications,
+                update,
+            ) {
                 self.send_notify_to_foreground_client(
                     protocol::NotifyKind::Sound,
                     sound_notify_message(sound),

@@ -44,8 +44,9 @@ Agent states are:
 | --- | --- |
 | `blocked` | The agent needs input, approval, or a decision. |
 | `working` | The agent is actively running. |
+| `waiting` | The agent is ready for input while detected background work is still running. |
 | `done` | The agent finished and you have not looked at it yet. |
-| `idle` | The agent is finished or waiting and has been seen. |
+| `idle` | The agent is ready for input, has no detected background work, and has been seen. |
 | `unknown` | Herdr cannot confidently classify the state. |
 
 Each client tracks which completions it has displayed. Viewing a completion in one client does not clear another client's Done badge. CLI/API statuses use the server's seen state, so they need not match a particular client's badge; both `idle` and `done` mean ready for input.

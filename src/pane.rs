@@ -202,13 +202,14 @@ async fn publish_state_changed_event(
     visible_blocker: bool,
     visible_working: bool,
     background_work: bool,
+    detector_generation: u64,
     process_exited: bool,
     observed_at: std::time::Instant,
 ) {
     // This runs on the async detector task, not the PTY reader thread.
     // Waiting for queue space here preserves correctness-critical state transitions
     // without blocking pane I/O.
-    if let Err(e) = state_events
+    if let Err(error) = state_events
         .send(AppEvent::StateChanged {
             pane_id,
             agent,
@@ -216,6 +217,7 @@ async fn publish_state_changed_event(
             visible_blocker,
             visible_working,
             background_work,
+            detector_generation,
             process_exited,
             observed_at,
         })
@@ -223,7 +225,7 @@ async fn publish_state_changed_event(
     {
         warn!(
             pane = pane_id.raw(),
-            err = %e,
+            err = %error,
             "failed to deliver StateChanged event"
         );
     }
@@ -267,6 +269,7 @@ async fn apply_agent_detection_publish_update(
     state_events: mpsc::Sender<AppEvent>,
     pane_id: PaneId,
     agent: Option<Agent>,
+    detector_generation: u64,
     update: AgentDetectionPublishUpdate,
     observed_at: std::time::Instant,
     state: &mut AgentState,
@@ -298,6 +301,7 @@ async fn apply_agent_detection_publish_update(
         update.visible_blocker,
         update.visible_working,
         update.background_work,
+        detector_generation,
         update.process_exited,
         observed_at,
     )
@@ -305,6 +309,12 @@ async fn apply_agent_detection_publish_update(
 }
 
 const AGENT_MISS_CONFIRMATION_ATTEMPTS: u8 = 6;
+static NEXT_DETECTOR_GENERATION: AtomicU64 = AtomicU64::new(1);
+
+fn next_detector_generation() -> u64 {
+    NEXT_DETECTOR_GENERATION.fetch_add(1, Ordering::Relaxed)
+}
+
 const PROCESS_RECHECK_IDENTIFIED: std::time::Duration = std::time::Duration::from_secs(5);
 const PROCESS_RECHECK_MISSING_FOREGROUND_GROUP: std::time::Duration =
     std::time::Duration::from_secs(30);
@@ -739,6 +749,7 @@ fn spawn_basic_detection_task(
         let mut last_screen_scan_detection_content_seq = None;
         let mut agent_startup_grace_until = None;
         let mut pending_idle = PendingIdleConfirmation::default();
+        let mut detector_generation = next_detector_generation();
 
         loop {
             let sleep_duration = if pending_idle.active() {
@@ -749,6 +760,7 @@ fn spawn_basic_detection_task(
             tokio::select! {
                 _ = tokio::time::sleep(sleep_duration) => {}
                 _ = detect_reset.notified() => {
+                    detector_generation = next_detector_generation();
                     agent_presence = AgentDetectionPresence::from_agent(None);
                     state = AgentState::Unknown;
                     last_visible_idle = false;
@@ -856,6 +868,7 @@ fn spawn_basic_detection_task(
                         || foreground_action
                             == ForegroundShellAgentAction::ReportReplacementProcess;
                     if agent_changed {
+                        detector_generation = next_detector_generation();
                         pending_idle.clear();
                         last_screen_scan_detection_content_seq = None;
                         // A replacement agent must not inherit OSC evidence
@@ -978,6 +991,7 @@ fn spawn_basic_detection_task(
                         state_events.clone(),
                         pane_id,
                         agent,
+                        detector_generation,
                         AgentDetectionPublishUpdate {
                             state: new_state,
                             visible_idle,
@@ -2455,6 +2469,7 @@ impl PaneRuntime {
                 let mut last_screen_scan_detection_content_seq = None;
                 let mut agent_startup_grace_until = None;
                 let mut pending_idle = PendingIdleConfirmation::default();
+                let mut detector_generation = next_detector_generation();
 
                 tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -2475,6 +2490,7 @@ impl PaneRuntime {
                     tokio::select! {
                         _ = tokio::time::sleep(tick) => {}
                         _ = detect_reset.notified() => {
+                            detector_generation = next_detector_generation();
                             agent_presence = AgentDetectionPresence::from_agent(None);
                             state = AgentState::Unknown;
                             last_visible_idle = false;
@@ -2618,6 +2634,7 @@ impl PaneRuntime {
                                     || foreground_action
                                         == ForegroundShellAgentAction::ReportReplacementProcess
                                 {
+                                    detector_generation = next_detector_generation();
                                     pending_idle.clear();
                                     last_screen_scan_detection_content_seq = None;
                                     // A replacement agent must not inherit OSC
@@ -2774,6 +2791,7 @@ impl PaneRuntime {
                                 state_events.clone(),
                                 pane_id,
                                 agent,
+                                detector_generation,
                                 AgentDetectionPublishUpdate {
                                     state: new_state,
                                     visible_idle,
@@ -4916,6 +4934,7 @@ mod tests {
             false,
             false,
             false,
+            0,
             false,
             std::time::Instant::now(),
         );
@@ -4955,6 +4974,7 @@ mod tests {
                 visible_blocker: false,
                 visible_working: false,
                 background_work: false,
+                detector_generation: 0,
                 process_exited: false,
                 observed_at: _,
             } if delivered_pane == pane_id

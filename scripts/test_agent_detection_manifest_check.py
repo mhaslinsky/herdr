@@ -29,19 +29,24 @@ path = "{path}"
 '''
 
 
-def staged_grok_dirs(root: Path) -> tuple[Path, Path]:
+def staged_grok_dirs(root: Path) -> tuple[Path, Path, tuple[str, str, str]]:
     bundled = root / "bundled"
     published = root / "published"
     bundled.mkdir()
     published.mkdir()
-    (bundled / "grok.toml").write_bytes(
-        (check.DEFAULT_BUNDLED_DIR / "grok.toml").read_bytes()
+    bundled_content = manifest("grok", "2026.06.10.2").replace(
+        "min_engine_version = 1", "min_engine_version = 2"
     )
-    (published / "grok.toml").write_bytes(
-        (check.DEFAULT_PUBLISHED_DIR / "grok.toml").read_bytes()
-    )
+    published_content = manifest("grok", "2026.06.10.1")
+    (bundled / "grok.toml").write_text(bundled_content)
+    (published / "grok.toml").write_text(published_content)
     (published / "index.toml").write_text(catalog("grok", "grok.toml"))
-    return bundled, published
+    staged_manifest = (
+        "2026.06.10.2",
+        "2026.06.10.1",
+        hashlib.sha256(published_content.encode()).hexdigest(),
+    )
+    return bundled, published, staged_manifest
 
 
 UNPUBLISHED_TEST_MANIFEST = manifest("testagent", "2026.06.10.1")
@@ -96,20 +101,30 @@ class AgentDetectionManifestCheckTests(unittest.TestCase):
 
     def test_allows_explicitly_staged_published_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
-            bundled, website = staged_grok_dirs(Path(tmp))
+            bundled, website, staged_manifest = staged_grok_dirs(Path(tmp))
 
-            bundled_manifests = check.load_manifest_dir(bundled, engine_version=3)
-            check.validate_catalog(website, bundled_manifests, engine_version=3)
+            bundled_manifests = check.load_manifest_dir(bundled, engine_version=2)
+            with patch.dict(
+                check.STAGED_PUBLISHED_MANIFESTS,
+                {"grok": staged_manifest},
+                clear=True,
+            ):
+                check.validate_catalog(website, bundled_manifests, engine_version=2)
 
     def test_rejects_mutated_staged_published_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
-            bundled, website = staged_grok_dirs(Path(tmp))
+            bundled, website, staged_manifest = staged_grok_dirs(Path(tmp))
             with (website / "grok.toml").open("a") as manifest_file:
                 manifest_file.write("\n# unexpected mutation\n")
 
-            bundled_manifests = check.load_manifest_dir(bundled, engine_version=3)
-            with self.assertRaisesRegex(check.CheckError, "lower than bundled"):
-                check.validate_catalog(website, bundled_manifests, engine_version=3)
+            bundled_manifests = check.load_manifest_dir(bundled, engine_version=2)
+            with patch.dict(
+                check.STAGED_PUBLISHED_MANIFESTS,
+                {"grok": staged_manifest},
+                clear=True,
+            ):
+                with self.assertRaisesRegex(check.CheckError, "lower than bundled"):
+                    check.validate_catalog(website, bundled_manifests, engine_version=2)
 
     def test_rejects_unlisted_published_manifest_lag_for_new_engine(self):
         with tempfile.TemporaryDirectory() as tmp:

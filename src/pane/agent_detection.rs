@@ -25,16 +25,56 @@ pub(super) struct DetectionPublishState {
 pub(super) struct PendingIdleConfirmation {
     started_at: Option<std::time::Instant>,
     confirmations: u8,
+    background_clear_started_at: Option<std::time::Instant>,
+    background_clear_confirmations: u8,
 }
 
 impl PendingIdleConfirmation {
     pub(super) fn active(&self) -> bool {
-        self.started_at.is_some()
+        self.started_at.is_some() || self.background_clear_started_at.is_some()
     }
 
     pub(super) fn clear(&mut self) {
         self.started_at = None;
         self.confirmations = 0;
+        self.clear_background_clear();
+    }
+
+    fn clear_background_clear(&mut self) {
+        self.background_clear_started_at = None;
+        self.background_clear_confirmations = 0;
+    }
+
+    pub(super) fn should_hold_background_clear(
+        &mut self,
+        previous_background_work: bool,
+        next_background_work: bool,
+        process_exited: bool,
+        now: std::time::Instant,
+    ) -> bool {
+        if process_exited || !previous_background_work || next_background_work {
+            self.clear_background_clear();
+            return false;
+        }
+
+        let Some(started_at) = self.background_clear_started_at else {
+            self.background_clear_started_at = Some(now);
+            self.background_clear_confirmations = 0;
+            return true;
+        };
+
+        if now.duration_since(started_at) >= AGENT_PENDING_IDLE_CAP {
+            self.clear_background_clear();
+            return false;
+        }
+
+        self.background_clear_confirmations = self.background_clear_confirmations.saturating_add(1);
+        if self.background_clear_confirmations >= AGENT_PENDING_IDLE_CONFIRMATIONS {
+            self.clear_background_clear();
+            return false;
+        }
+
+        true
     }
 
     pub(super) fn should_hold_working_to_idle(
@@ -244,8 +284,17 @@ pub(super) fn decide_screen_detection_publish(
     pending_idle: &mut PendingIdleConfirmation,
 ) -> DetectionPublishDecision {
     let detection = input.screen_detection;
+    if pending_idle.should_hold_background_clear(
+        input.last_background_work,
+        detection.background_work,
+        input.process_exited,
+        input.now,
+    ) {
+        return DetectionPublishDecision::NoPublish;
+    }
     if detection.skip_state_update {
-        pending_idle.clear();
+        pending_idle.started_at = None;
+        pending_idle.confirmations = 0;
         return if detection.background_work == input.last_background_work {
             DetectionPublishDecision::NoPublish
         } else {
@@ -650,6 +699,62 @@ mod tests {
         assert_eq!(
             decide_screen_detection_publish(input, &mut pending_idle),
             DetectionPublishDecision::NoPublish
+        );
+    }
+
+    #[test]
+    fn background_clear_requires_stable_observations_and_cancels_on_true() {
+        let now = std::time::Instant::now();
+        let mut pending_idle = PendingIdleConfirmation::default();
+        let mut clear = screen_publish_input(
+            AgentState::Idle,
+            AgentDetection {
+                state: AgentState::Idle,
+                skip_state_update: false,
+                visible_idle: true,
+                visible_blocker: false,
+                visible_working: false,
+                background_work: false,
+            },
+            now,
+        );
+        clear.last_background_work = true;
+        clear.last_visible_idle = true;
+
+        assert_eq!(
+            decide_screen_detection_publish(clear, &mut pending_idle),
+            DetectionPublishDecision::NoPublish
+        );
+        assert!(pending_idle.active());
+
+        let mut resumed = clear;
+        resumed.screen_detection.background_work = true;
+        resumed.now += AGENT_PENDING_IDLE_RECHECK;
+        assert_eq!(
+            decide_screen_detection_publish(resumed, &mut pending_idle),
+            DetectionPublishDecision::NoPublish
+        );
+        assert!(!pending_idle.active());
+
+        for observation in 0..AGENT_PENDING_IDLE_CONFIRMATIONS {
+            clear.now += AGENT_PENDING_IDLE_RECHECK;
+            assert_eq!(
+                decide_screen_detection_publish(clear, &mut pending_idle),
+                DetectionPublishDecision::NoPublish,
+                "clear observation {observation} must remain debounced"
+            );
+        }
+        clear.now += AGENT_PENDING_IDLE_RECHECK;
+        assert_eq!(
+            decide_screen_detection_publish(clear, &mut pending_idle),
+            DetectionPublishDecision::Publish {
+                state: AgentState::Idle,
+                visible_idle: true,
+                visible_blocker: false,
+                visible_working: false,
+                background_work: false,
+                process_exited: false,
+            }
         );
     }
 
