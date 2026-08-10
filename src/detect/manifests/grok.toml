@@ -1,7 +1,7 @@
 id = "grok"
-version = "2026.07.16.2"
-min_engine_version = 3
-updated_at = "2026-07-16T00:00:00Z"
+version = "2026.08.09.1"
+min_engine_version = 4
+updated_at = "2026-08-09T00:00:00Z"
 aliases = ["grok-build"]
 
 # Evidence: Grok Build 0.2.101 source and live pane reads.
@@ -79,7 +79,7 @@ any = [
 # the number of running background tasks and disappears when the count is zero.
 [[rules]]
 id = "background_work_chip_working"
-state = "working"
+background_work = true
 priority = 1170
 region = "top_non_empty_lines(1)"
 visible_working = true

@@ -326,8 +326,8 @@ fn render_header_status(
         return;
     };
 
-    let (state, seen) = ws.aggregate_state(&app.terminals);
-    let (dot, dot_style) = state_icon(state, seen, app.status_indicators, p);
+    let (state, seen, background_work) = ws.aggregate_presentation(&app.terminals).parts();
+    let (dot, dot_style) = state_icon(state, seen, background_work, app.status_indicators, p);
     let tab_label = mobile_tab_status(ws);
     let row1 = Rect::new(area.x, area.y, area.width, 1);
     let tab_w = display_width_u16(&tab_label)
@@ -407,7 +407,8 @@ fn render_switch_button(app: &AppState, frame: &mut Frame, area: Rect) {
     // "tap me" without the user reading the summary row.
     if global_agent_counts(app).blocked > 0 {
         let bx = area.x + area.width.saturating_sub(1);
-        let (symbol, style) = state_icon(AgentState::Blocked, true, app.status_indicators, p);
+        let (symbol, style) =
+            state_icon(AgentState::Blocked, true, false, app.status_indicators, p);
         frame.buffer_mut()[(bx, area.y)]
             .set_symbol(symbol)
             .set_style(style.bg(p.surface0));
@@ -534,7 +535,13 @@ fn render_mobile_switcher_content(
                 entry.ws_idx == ws_idx && entry.tab_idx == tab_idx && entry.pane_id == pane_id
             });
             let bg = mobile_item_bg(false, active, p);
-            let (icon, icon_style) = state_icon(entry.state, entry.seen, app.status_indicators, p);
+            let (icon, icon_style) = state_icon(
+                entry.state,
+                entry.seen,
+                entry.background_work,
+                app.status_indicators,
+                p,
+            );
             let title = Line::from(vec![
                 Span::styled("  ", Style::default().bg(bg)),
                 Span::styled(icon, icon_style.bg(bg)),
@@ -596,8 +603,8 @@ fn render_mobile_switcher_content(
         let active = Some(*ws_idx) == app.active;
         let selected = *ws_idx == app.selected;
         let bg = mobile_item_bg(selected, active, p);
-        let (state, seen) = ws.aggregate_state(&app.terminals);
-        let (dot, dot_style) = state_icon(state, seen, app.status_indicators, p);
+        let (state, seen, background_work) = ws.aggregate_presentation(&app.terminals).parts();
+        let (dot, dot_style) = state_icon(state, seen, background_work, app.status_indicators, p);
 
         let mut title_spans = vec![Span::styled("  ", Style::default().bg(bg))];
         // Worktrees of the same space render as branches off their parent, so a
@@ -745,9 +752,12 @@ fn mobile_agent_detail(entry: &AgentPanelEntry) -> String {
         .get(super::sidebar::agent_panel_status_key(
             entry.state,
             entry.seen,
+            entry.background_work,
         ))
         .cloned()
-        .unwrap_or_else(|| super::status::state_label(entry.state, entry.seen).to_string());
+        .unwrap_or_else(|| {
+            super::status::state_label(entry.state, entry.seen, entry.background_work).to_string()
+        });
     parts.push(status);
     if let Some(agent_label) = entry.agent_label.as_deref() {
         parts.push(agent_label.to_string());
@@ -974,28 +984,30 @@ struct GlobalAgentCounts {
     blocked: usize,
     done: usize,
     working: usize,
+    waiting: usize,
     idle: usize,
 }
 
 impl GlobalAgentCounts {
     fn total(&self) -> usize {
-        self.blocked + self.done + self.working + self.idle
+        self.blocked + self.done + self.working + self.waiting + self.idle
     }
 
     fn any_pending(&self) -> bool {
-        self.blocked > 0 || self.done > 0 || self.working > 0
+        self.blocked > 0 || self.done > 0 || self.working > 0 || self.waiting > 0
     }
 }
 
 fn global_agent_counts(app: &AppState) -> GlobalAgentCounts {
     let mut counts = GlobalAgentCounts::default();
     for entry in crate::ui::all_agent_panel_entries(app) {
-        match (entry.state, entry.seen) {
-            (AgentState::Blocked, _) => counts.blocked += 1,
-            (AgentState::Idle, false) => counts.done += 1,
-            (AgentState::Working, _) => counts.working += 1,
-            (AgentState::Idle, true) => counts.idle += 1,
-            (AgentState::Unknown, _) => {}
+        match (entry.state, entry.seen, entry.background_work) {
+            (AgentState::Blocked, _, _) => counts.blocked += 1,
+            (AgentState::Working, _, _) => counts.working += 1,
+            (AgentState::Idle, _, true) => counts.waiting += 1,
+            (AgentState::Idle, false, false) => counts.done += 1,
+            (AgentState::Idle, true, false) => counts.idle += 1,
+            (AgentState::Unknown, _, _) => {}
         }
     }
     counts
@@ -1006,6 +1018,7 @@ enum SummaryTone {
     Blocked,
     Done,
     Working,
+    Waiting,
     Idle,
     Muted,
 }
@@ -1029,6 +1042,7 @@ fn agent_summary_segments(
                 indicator_style,
                 AgentState::Blocked,
                 true,
+                false,
                 Some("◉"),
                 counts.blocked,
                 "blocked",
@@ -1041,6 +1055,7 @@ fn agent_summary_segments(
             agent_summary_text(
                 indicator_style,
                 AgentState::Idle,
+                false,
                 false,
                 Some("●"),
                 counts.done,
@@ -1055,11 +1070,26 @@ fn agent_summary_segments(
                 indicator_style,
                 AgentState::Working,
                 true,
+                false,
                 None,
                 counts.working,
                 "working",
             ),
             SummaryTone::Working,
+        ));
+    }
+    if counts.waiting > 0 {
+        segments.push((
+            agent_summary_text(
+                indicator_style,
+                AgentState::Idle,
+                true,
+                true,
+                Some("◐"),
+                counts.waiting,
+                "waiting",
+            ),
+            SummaryTone::Waiting,
         ));
     }
     if counts.idle > 0 {
@@ -1068,6 +1098,7 @@ fn agent_summary_segments(
                 indicator_style,
                 AgentState::Idle,
                 true,
+                false,
                 None,
                 counts.idle,
                 "idle",
@@ -1082,13 +1113,19 @@ fn agent_summary_text(
     indicator_style: StatusIndicatorStyle,
     state: AgentState,
     seen: bool,
+    background_work: bool,
     dot_style_symbol: Option<&str>,
     count: usize,
     label: &str,
 ) -> String {
     let symbol = match indicator_style {
         StatusIndicatorStyle::Dots => dot_style_symbol,
-        StatusIndicatorStyle::Symbols => Some(state_icon_symbol(state, seen, indicator_style)),
+        StatusIndicatorStyle::Symbols => Some(state_icon_symbol(
+            state,
+            seen,
+            background_work,
+            indicator_style,
+        )),
     };
     match symbol {
         Some(symbol) => format!("{symbol} {count} {label}"),
@@ -1140,6 +1177,7 @@ fn agent_summary_line(app: &AppState, p: &Palette, max_width: u16) -> Line<'stat
                 SummaryTone::Blocked => p.red,
                 SummaryTone::Done => p.blue,
                 SummaryTone::Working => p.yellow,
+                SummaryTone::Waiting => p.blue,
                 SummaryTone::Idle | SummaryTone::Muted => p.overlay1,
             };
             let style = Style::default().fg(color).bg(p.panel_bg);
@@ -1223,6 +1261,7 @@ mod tests {
             agent: agent_label.and_then(crate::detect::parse_agent_label),
             state: AgentState::Idle,
             seen: true,
+            background_work: false,
             last_agent_state_change_seq: None,
             state_labels: std::collections::HashMap::new(),
             tokens: std::collections::HashMap::new(),
@@ -1269,6 +1308,7 @@ mod tests {
             blocked: 2,
             done: 1,
             working: 2,
+            waiting: 0,
             idle: 1,
         };
         let segments = agent_summary_segments(counts, StatusIndicatorStyle::Dots);
@@ -1286,6 +1326,7 @@ mod tests {
             blocked: 2,
             done: 1,
             working: 2,
+            waiting: 0,
             idle: 1,
         };
         let labels: Vec<String> = agent_summary_segments(counts, StatusIndicatorStyle::Symbols)
@@ -1361,6 +1402,7 @@ mod tests {
             blocked: 2,
             done: 1,
             working: 2,
+            waiting: 0,
             idle: 1,
         };
         let (shown, truncated) = fit_summary_segments(
@@ -1378,6 +1420,7 @@ mod tests {
             blocked: 2,
             done: 1,
             working: 2,
+            waiting: 0,
             idle: 1,
         };
         let (shown, truncated) = fit_summary_segments(

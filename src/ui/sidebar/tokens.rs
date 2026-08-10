@@ -172,6 +172,7 @@ mod tests {
             agent: Some(crate::detect::Agent::Pi),
             state: AgentState::Working,
             seen: true,
+            background_work: false,
             last_agent_state_change_seq: None,
             state_labels: std::collections::HashMap::new(),
             tokens: std::collections::HashMap::new(),

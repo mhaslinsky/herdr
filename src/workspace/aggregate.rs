@@ -20,6 +20,7 @@ pub struct PaneDetail {
     pub agent: Option<Agent>,
     pub state: AgentState,
     pub seen: bool,
+    pub background_work: bool,
     pub last_agent_state_change_seq: Option<u64>,
     pub state_labels: HashMap<String, String>,
     pub tokens: HashMap<String, String>,
@@ -63,6 +64,7 @@ impl Tab {
                     agent: terminal.effective_known_agent(),
                     state: terminal.state,
                     seen: pane.seen,
+                    background_work: terminal.background_work,
                     last_agent_state_change_seq: terminal.last_agent_state_change_seq,
                     state_labels: presentation.state_labels,
                     tokens: terminal.metadata_tokens.values(),
@@ -82,7 +84,73 @@ fn pane_attention_priority(state: AgentState, seen: bool) -> u8 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AgentPresentation {
+    Blocked,
+    Done,
+    Working,
+    Waiting,
+    Idle,
+    Unknown,
+}
+
+impl AgentPresentation {
+    pub(crate) fn from_parts(state: AgentState, seen: bool, background_work: bool) -> Self {
+        match (state, seen, background_work) {
+            (AgentState::Blocked, _, _) => Self::Blocked,
+            (AgentState::Working, _, _) => Self::Working,
+            (AgentState::Idle, _, true) => Self::Waiting,
+            (AgentState::Idle, false, false) => Self::Done,
+            (AgentState::Idle, true, false) => Self::Idle,
+            (AgentState::Unknown, _, _) => Self::Unknown,
+        }
+    }
+
+    pub(crate) fn attention_priority(self) -> u8 {
+        match self {
+            Self::Blocked => 5,
+            Self::Done => 4,
+            Self::Working => 3,
+            Self::Waiting => 2,
+            Self::Idle => 1,
+            Self::Unknown => 0,
+        }
+    }
+
+    pub(crate) fn parts(self) -> (AgentState, bool, bool) {
+        match self {
+            Self::Blocked => (AgentState::Blocked, true, false),
+            Self::Done => (AgentState::Idle, false, false),
+            Self::Working => (AgentState::Working, true, false),
+            Self::Waiting => (AgentState::Idle, true, true),
+            Self::Idle => (AgentState::Idle, true, false),
+            Self::Unknown => (AgentState::Unknown, true, false),
+        }
+    }
+}
+
 impl Workspace {
+    pub(crate) fn aggregate_presentation(
+        &self,
+        terminals: &HashMap<TerminalId, TerminalState>,
+    ) -> AgentPresentation {
+        self.tabs
+            .iter()
+            .flat_map(|tab| tab.panes.values())
+            .filter_map(|pane| {
+                terminals.get(&pane.attached_terminal_id).map(|terminal| {
+                    AgentPresentation::from_parts(
+                        terminal.state,
+                        pane.seen,
+                        terminal.background_work,
+                    )
+                })
+            })
+            .max_by_key(|presentation| presentation.attention_priority())
+            .unwrap_or(AgentPresentation::Unknown)
+    }
+
+    #[allow(dead_code)]
     pub fn aggregate_state(
         &self,
         terminals: &HashMap<TerminalId, TerminalState>,
@@ -191,6 +259,46 @@ mod tests {
 
         assert_eq!(state, AgentState::Idle);
         assert!(!seen);
+    }
+
+    #[test]
+    fn aggregate_presentation_inserts_waiting_below_working() {
+        let mut workspace = Workspace::test_new("test");
+        let waiting_pane = workspace.tabs[0].root_pane;
+        let working_pane = workspace.test_split(Direction::Horizontal);
+        let mut terminals = HashMap::new();
+
+        let mut waiting_terminal = terminal_for_pane(&workspace, waiting_pane);
+        waiting_terminal.state = AgentState::Idle;
+        waiting_terminal.background_work = true;
+        terminals.insert(waiting_terminal.id.clone(), waiting_terminal);
+        assert_eq!(
+            workspace.aggregate_presentation(&terminals),
+            AgentPresentation::Waiting
+        );
+
+        let mut working_terminal = terminal_for_pane(&workspace, working_pane);
+        working_terminal.state = AgentState::Working;
+        terminals.insert(working_terminal.id.clone(), working_terminal);
+        assert_eq!(
+            workspace.aggregate_presentation(&terminals),
+            AgentPresentation::Working
+        );
+
+        workspace.tabs[0].panes.get_mut(&waiting_pane).unwrap().seen = false;
+        assert_eq!(
+            workspace.aggregate_presentation(&terminals),
+            AgentPresentation::Working
+        );
+
+        terminals
+            .get_mut(&workspace.tabs[0].panes[&waiting_pane].attached_terminal_id)
+            .unwrap()
+            .background_work = false;
+        assert_eq!(
+            workspace.aggregate_presentation(&terminals),
+            AgentPresentation::Done
+        );
     }
 
     #[test]

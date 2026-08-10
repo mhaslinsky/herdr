@@ -1,8 +1,15 @@
 id = "claude"
-version = "2026.08.04.1"
-min_engine_version = 2
-updated_at = "2026-08-04T00:00:00Z"
+version = "2026.08.09.1"
+min_engine_version = 4
+updated_at = "2026-08-09T00:00:00Z"
 aliases = ["claude-code"]
+
+[[rules]]
+id = "background_shells"
+priority = 1120
+region = "bottom_non_empty_lines(2)"
+background_work = true
+line_regex = ['·\s*[1-9][0-9]*\s+shells?\s*·']
 
 [[rules]]
 id = "osc_title_working"

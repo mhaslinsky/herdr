@@ -181,7 +181,7 @@ fn agent_start_command_works() {
     assert_eq!(stalled["error"]["code"], "agent_prompt_stalled");
     assert!(stalled["error"]["message"]
         .as_str()
-        .is_some_and(|message| message.contains("state_change_seq remained")));
+        .is_some_and(|message| message.contains("no working or blocked activity")));
 
     let prompted = run_cli(
         &socket_path,

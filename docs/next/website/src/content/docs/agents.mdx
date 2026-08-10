@@ -90,7 +90,7 @@ Herdr can run inside tmux as the outer terminal environment. Agent detection doe
 
 The sidebar rolls state upward.
 
-A blocked agent makes its pane, tab, and workspace look blocked. A working agent makes the workspace look active. A done agent stays visible until you view it.
+A blocked agent makes its pane, tab, and workspace look blocked. A working agent makes the workspace look active. An idle agent with detected background work appears as blue `waiting`, remains promptable, and does not become done until that work clears. A done agent stays visible until you view it.
 
 This is the main Herdr workflow: start several agents, let them work in parallel, and use the sidebar to see which project needs a decision, which one is still running, and which one is ready to review.
 
