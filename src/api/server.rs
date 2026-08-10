@@ -911,6 +911,38 @@ mod tests {
         }
     }
 
+    fn agent_info(
+        agent_status: crate::api::schema::AgentStatus,
+        background_work: bool,
+        state_change_seq: u64,
+    ) -> crate::api::schema::AgentInfo {
+        crate::api::schema::AgentInfo {
+            terminal_id: "term_1".into(),
+            name: Some("worker".into()),
+            agent: Some("pi".into()),
+            title: None,
+            terminal_title: None,
+            terminal_title_stripped: None,
+            display_agent: None,
+            agent_status,
+            background_work,
+            screen_detection_skipped: false,
+            state_labels: HashMap::new(),
+            tokens: HashMap::new(),
+            agent_session: None,
+            workspace_id: "ws_1".into(),
+            tab_id: "tab_1".into(),
+            pane_id: "pane_1".into(),
+            focused: true,
+            launch_pending: false,
+            interactive_ready: true,
+            state_change_seq,
+            cwd: None,
+            foreground_cwd: None,
+            revision: state_change_seq,
+        }
+    }
+
     fn spawn_pane_get_responder(
         agent_status: crate::api::schema::AgentStatus,
     ) -> (ApiRequestSender, std::thread::JoinHandle<()>) {
@@ -1140,6 +1172,466 @@ mod tests {
         );
         drop(api_tx);
         responder.join().unwrap();
+    }
+
+    #[test]
+    fn agent_wait_event_replay_ignores_idle_until_background_work_clears() {
+        let event_hub = EventHub::default();
+        let responder_event_hub = event_hub.clone();
+        let (api_tx, mut api_rx) = mpsc::unbounded_channel::<ApiRequestMessage>();
+        let responder = std::thread::spawn(move || {
+            let mut request_count = 0u64;
+            while let Some(msg) = api_rx.blocking_recv() {
+                let Method::AgentGet(_) = msg.request.method else {
+                    panic!("unexpected request: {:?}", msg.request.method);
+                };
+                request_count += 1;
+                let agent = match request_count {
+                    1 => {
+                        responder_event_hub.push(crate::api::schema::EventEnvelope {
+                            event: crate::api::schema::EventKind::PaneAgentStatusChanged,
+                            data: crate::api::schema::EventData::PaneAgentStatusChanged {
+                                pane_id: "pane_1".into(),
+                                workspace_id: "ws_1".into(),
+                                agent_status: crate::api::schema::AgentStatus::Idle,
+                                agent: Some("pi".into()),
+                                title: None,
+                                display_agent: None,
+                                state_labels: HashMap::new(),
+                            },
+                        });
+                        agent_info(crate::api::schema::AgentStatus::Working, false, 1)
+                    }
+                    2 => {
+                        responder_event_hub.push(crate::api::schema::EventEnvelope {
+                            event: crate::api::schema::EventKind::PaneAgentStatusChanged,
+                            data: crate::api::schema::EventData::PaneAgentStatusChanged {
+                                pane_id: "pane_1".into(),
+                                workspace_id: "ws_1".into(),
+                                agent_status: crate::api::schema::AgentStatus::Done,
+                                agent: Some("pi".into()),
+                                title: None,
+                                display_agent: None,
+                                state_labels: HashMap::new(),
+                            },
+                        });
+                        agent_info(crate::api::schema::AgentStatus::Idle, true, 2)
+                    }
+                    _ => agent_info(crate::api::schema::AgentStatus::Done, false, 3),
+                };
+                msg.respond_to
+                    .send(
+                        serde_json::to_string(&SuccessResponse {
+                            id: msg.request.id,
+                            result: ResponseResult::AgentInfo { agent },
+                        })
+                        .unwrap(),
+                    )
+                    .unwrap();
+            }
+            request_count
+        });
+
+        let (mut client, server, _path) = local_stream_pair("agwait-bg");
+        client
+            .write_all(br#"{"id":"agent_wait","method":"agent.wait","params":{"target":"worker","until":[],"timeout_ms":1000}}"#)
+            .unwrap();
+        client.write_all(b"\n").unwrap();
+        client.flush().unwrap();
+
+        let running = Arc::new(AtomicBool::new(true));
+        handle_connection(server, &api_tx, &event_hub, &running, None).unwrap();
+
+        let response: serde_json::Value = serde_json::from_str(&read_line(&mut client)).unwrap();
+        assert_eq!(response["result"]["type"], "agent_info");
+        assert_eq!(response["result"]["agent"]["agent_status"], "done");
+        assert!(response["result"]["agent"]["background_work"].is_null());
+        drop(api_tx);
+        assert_eq!(responder.join().unwrap(), 3);
+    }
+
+    #[test]
+    fn agent_prompt_wait_releases_on_background_falling_edge_without_second_state_transition() {
+        let event_hub = EventHub::default();
+        let responder_event_hub = event_hub.clone();
+        let (api_tx, mut api_rx) = mpsc::unbounded_channel::<ApiRequestMessage>();
+        let responder = std::thread::spawn(move || {
+            let mut request_count = 0u64;
+            while let Some(msg) = api_rx.blocking_recv() {
+                request_count += 1;
+                let result = match msg.request.method {
+                    Method::AgentGet(_) if request_count == 1 => ResponseResult::AgentInfo {
+                        agent: agent_info(crate::api::schema::AgentStatus::Idle, true, 1),
+                    },
+                    Method::AgentPrompt(_) if request_count == 2 => {
+                        responder_event_hub.push(crate::api::schema::EventEnvelope {
+                            event: crate::api::schema::EventKind::PaneAgentStatusChanged,
+                            data: crate::api::schema::EventData::PaneAgentStatusChanged {
+                                pane_id: "pane_1".into(),
+                                workspace_id: "ws_1".into(),
+                                agent_status: crate::api::schema::AgentStatus::Working,
+                                agent: Some("pi".into()),
+                                title: None,
+                                display_agent: None,
+                                state_labels: HashMap::new(),
+                            },
+                        });
+                        ResponseResult::AgentPrompted {
+                            agent: agent_info(crate::api::schema::AgentStatus::Idle, true, 1),
+                        }
+                    }
+                    Method::AgentGet(_) if request_count == 3 => {
+                        responder_event_hub.push(crate::api::schema::EventEnvelope {
+                            event: crate::api::schema::EventKind::PaneAgentStatusChanged,
+                            data: crate::api::schema::EventData::PaneAgentStatusChanged {
+                                pane_id: "pane_1".into(),
+                                workspace_id: "ws_1".into(),
+                                agent_status: crate::api::schema::AgentStatus::Done,
+                                agent: Some("pi".into()),
+                                title: None,
+                                display_agent: None,
+                                state_labels: HashMap::new(),
+                            },
+                        });
+                        ResponseResult::AgentInfo {
+                            agent: agent_info(crate::api::schema::AgentStatus::Idle, true, 2),
+                        }
+                    }
+                    Method::AgentGet(_) if request_count == 4 => ResponseResult::AgentInfo {
+                        agent: agent_info(crate::api::schema::AgentStatus::Done, false, 3),
+                    },
+                    other => panic!("unexpected request {request_count}: {other:?}"),
+                };
+                msg.respond_to
+                    .send(
+                        serde_json::to_string(&SuccessResponse {
+                            id: msg.request.id,
+                            result,
+                        })
+                        .unwrap(),
+                    )
+                    .unwrap();
+            }
+            request_count
+        });
+
+        let (mut client, server, _path) = local_stream_pair("agprompt-bg");
+        client
+            .write_all(br#"{"id":"agent_prompt","method":"agent.prompt","params":{"target":"worker","text":"continue","wait":{"until":[],"timeout_ms":1000}}}"#)
+            .unwrap();
+        client.write_all(b"\n").unwrap();
+        client.flush().unwrap();
+
+        let running = Arc::new(AtomicBool::new(true));
+        handle_connection(server, &api_tx, &event_hub, &running, None).unwrap();
+
+        let response: serde_json::Value = serde_json::from_str(&read_line(&mut client)).unwrap();
+        assert_eq!(response["result"]["type"], "agent_prompted");
+        assert_eq!(response["result"]["agent"]["agent_status"], "done");
+        assert!(response["result"]["agent"]["background_work"].is_null());
+        drop(api_tx);
+        assert_eq!(responder.join().unwrap(), 4);
+    }
+
+    #[test]
+    fn agent_prompt_activity_replay_ignores_background_settlement_guard() {
+        let event_hub = EventHub::default();
+        let responder_event_hub = event_hub.clone();
+        let (api_tx, mut api_rx) = mpsc::unbounded_channel::<ApiRequestMessage>();
+        let responder = std::thread::spawn(move || {
+            let mut request_count = 0u64;
+            while let Some(msg) = api_rx.blocking_recv() {
+                request_count += 1;
+                let result = match msg.request.method {
+                    Method::AgentGet(_) if request_count == 1 => ResponseResult::AgentInfo {
+                        agent: agent_info(crate::api::schema::AgentStatus::Idle, true, 10),
+                    },
+                    Method::AgentPrompt(_) if request_count == 2 => {
+                        responder_event_hub.push(crate::api::schema::EventEnvelope {
+                            event: crate::api::schema::EventKind::PaneAgentStatusChanged,
+                            data: crate::api::schema::EventData::PaneAgentStatusChanged {
+                                pane_id: "pane_1".into(),
+                                workspace_id: "ws_1".into(),
+                                agent_status: crate::api::schema::AgentStatus::Working,
+                                agent: Some("pi".into()),
+                                title: None,
+                                display_agent: None,
+                                state_labels: HashMap::new(),
+                            },
+                        });
+                        ResponseResult::AgentPrompted {
+                            agent: agent_info(crate::api::schema::AgentStatus::Idle, true, 10),
+                        }
+                    }
+                    Method::AgentGet(_) => ResponseResult::AgentInfo {
+                        agent: agent_info(crate::api::schema::AgentStatus::Idle, true, 12),
+                    },
+                    other => panic!("unexpected request {request_count}: {other:?}"),
+                };
+                msg.respond_to
+                    .send(
+                        serde_json::to_string(&SuccessResponse {
+                            id: msg.request.id,
+                            result,
+                        })
+                        .unwrap(),
+                    )
+                    .unwrap();
+            }
+            request_count
+        });
+
+        let (mut client, server, _path) = local_stream_pair("agprompt-activity-bg");
+        client
+            .write_all(br#"{"id":"agent_prompt","method":"agent.prompt","params":{"target":"worker","text":"continue","wait":{"until":[],"timeout_ms":30}}}"#)
+            .unwrap();
+        client.write_all(b"\n").unwrap();
+        client.flush().unwrap();
+
+        let running = Arc::new(AtomicBool::new(true));
+        handle_connection(server, &api_tx, &event_hub, &running, None).unwrap();
+
+        let response: serde_json::Value = serde_json::from_str(&read_line(&mut client)).unwrap();
+        assert_eq!(response["error"]["code"], "timeout");
+        drop(api_tx);
+        assert_eq!(responder.join().unwrap(), 5);
+    }
+
+    #[test]
+    fn agent_prompt_wait_ignores_prior_deferred_completion_as_prompt_activity() {
+        let event_hub = EventHub::default();
+        let responder_event_hub = event_hub.clone();
+        let (api_tx, mut api_rx) = mpsc::unbounded_channel::<ApiRequestMessage>();
+        let responder = std::thread::spawn(move || {
+            let mut request_count = 0u64;
+            while let Some(msg) = api_rx.blocking_recv() {
+                request_count += 1;
+                let result = match msg.request.method {
+                    Method::AgentGet(_) if request_count == 1 => ResponseResult::AgentInfo {
+                        agent: agent_info(crate::api::schema::AgentStatus::Idle, true, 10),
+                    },
+                    Method::AgentPrompt(_) if request_count == 2 => {
+                        responder_event_hub.push(crate::api::schema::EventEnvelope {
+                            event: crate::api::schema::EventKind::PaneAgentStatusChanged,
+                            data: crate::api::schema::EventData::PaneAgentStatusChanged {
+                                pane_id: "pane_1".into(),
+                                workspace_id: "ws_1".into(),
+                                agent_status: crate::api::schema::AgentStatus::Done,
+                                agent: Some("pi".into()),
+                                title: None,
+                                display_agent: None,
+                                state_labels: HashMap::new(),
+                            },
+                        });
+                        ResponseResult::AgentPrompted {
+                            agent: agent_info(crate::api::schema::AgentStatus::Idle, true, 10),
+                        }
+                    }
+                    Method::AgentGet(_) => ResponseResult::AgentInfo {
+                        agent: agent_info(crate::api::schema::AgentStatus::Done, false, 11),
+                    },
+                    other => panic!("unexpected request {request_count}: {other:?}"),
+                };
+                msg.respond_to
+                    .send(
+                        serde_json::to_string(&SuccessResponse {
+                            id: msg.request.id,
+                            result,
+                        })
+                        .unwrap(),
+                    )
+                    .unwrap();
+            }
+            request_count
+        });
+
+        let (mut client, server, _path) = local_stream_pair("agprompt-old-debt");
+        client
+            .write_all(br#"{"id":"agent_prompt","method":"agent.prompt","params":{"target":"worker","text":"continue","wait":{"until":[],"timeout_ms":30}}}"#)
+            .unwrap();
+        client.write_all(b"\n").unwrap();
+        client.flush().unwrap();
+
+        let running = Arc::new(AtomicBool::new(true));
+        handle_connection(server, &api_tx, &event_hub, &running, None).unwrap();
+
+        let response: serde_json::Value = serde_json::from_str(&read_line(&mut client)).unwrap();
+        assert_eq!(response["error"]["code"], "timeout");
+        drop(api_tx);
+        assert_eq!(responder.join().unwrap(), 4);
+    }
+
+    #[test]
+    fn agent_wait_does_not_join_transient_status_to_current_snapshot() {
+        let event_hub = EventHub::default();
+        let responder_event_hub = event_hub.clone();
+        let (api_tx, mut api_rx) = mpsc::unbounded_channel::<ApiRequestMessage>();
+        let responder = std::thread::spawn(move || {
+            let mut request_count = 0u64;
+            while let Some(msg) = api_rx.blocking_recv() {
+                let Method::AgentGet(_) = msg.request.method else {
+                    panic!("unexpected request: {:?}", msg.request.method);
+                };
+                request_count += 1;
+                let agent = if request_count == 1 {
+                    responder_event_hub.push(crate::api::schema::EventEnvelope {
+                        event: crate::api::schema::EventKind::PaneAgentStatusChanged,
+                        data: crate::api::schema::EventData::PaneAgentStatusChanged {
+                            pane_id: "pane_1".into(),
+                            workspace_id: "ws_1".into(),
+                            agent_status: crate::api::schema::AgentStatus::Idle,
+                            agent: Some("pi".into()),
+                            title: None,
+                            display_agent: None,
+                            state_labels: HashMap::new(),
+                        },
+                    });
+                    agent_info(crate::api::schema::AgentStatus::Working, false, 1)
+                } else {
+                    agent_info(crate::api::schema::AgentStatus::Done, false, 3)
+                };
+                msg.respond_to
+                    .send(
+                        serde_json::to_string(&SuccessResponse {
+                            id: msg.request.id,
+                            result: ResponseResult::AgentInfo { agent },
+                        })
+                        .unwrap(),
+                    )
+                    .unwrap();
+            }
+            request_count
+        });
+
+        let (mut client, server, _path) = local_stream_pair("agwait-coherent");
+        client
+            .write_all(br#"{"id":"agent_wait","method":"agent.wait","params":{"target":"worker","until":["idle"],"timeout_ms":30}}"#)
+            .unwrap();
+        client.write_all(b"\n").unwrap();
+        client.flush().unwrap();
+
+        let running = Arc::new(AtomicBool::new(true));
+        handle_connection(server, &api_tx, &event_hub, &running, None).unwrap();
+
+        let response: serde_json::Value = serde_json::from_str(&read_line(&mut client)).unwrap();
+        assert_eq!(response["error"]["code"], "timeout");
+        drop(api_tx);
+        assert_eq!(responder.join().unwrap(), 3);
+    }
+
+    #[test]
+    fn agent_wait_release_does_not_return_stale_initial_snapshot() {
+        let event_hub = EventHub::default();
+        let responder_event_hub = event_hub.clone();
+        let (api_tx, mut api_rx) = mpsc::unbounded_channel::<ApiRequestMessage>();
+        let responder = std::thread::spawn(move || {
+            let mut request_count = 0u64;
+            while let Some(msg) = api_rx.blocking_recv() {
+                let Method::AgentGet(_) = msg.request.method else {
+                    panic!("unexpected request: {:?}", msg.request.method);
+                };
+                request_count += 1;
+                responder_event_hub.push(crate::api::schema::EventEnvelope {
+                    event: crate::api::schema::EventKind::PaneAgentDetected,
+                    data: crate::api::schema::EventData::PaneAgentDetected {
+                        pane_id: "pane_1".into(),
+                        workspace_id: "ws_1".into(),
+                        agent: Some("pi".into()),
+                        released: true,
+                        final_status: Some(crate::api::schema::AgentStatus::Done),
+                        final_agent: None,
+                    },
+                });
+                msg.respond_to
+                    .send(
+                        serde_json::to_string(&SuccessResponse {
+                            id: msg.request.id,
+                            result: ResponseResult::AgentInfo {
+                                agent: agent_info(crate::api::schema::AgentStatus::Idle, true, 5),
+                            },
+                        })
+                        .unwrap(),
+                    )
+                    .unwrap();
+            }
+            request_count
+        });
+
+        let (mut client, server, _path) = local_stream_pair("agwait-release-coherent");
+        client
+            .write_all(br#"{"id":"agent_wait","method":"agent.wait","params":{"target":"worker","until":[],"timeout_ms":1000}}"#)
+            .unwrap();
+        client.write_all(b"\n").unwrap();
+        client.flush().unwrap();
+
+        let running = Arc::new(AtomicBool::new(true));
+        handle_connection(server, &api_tx, &event_hub, &running, None).unwrap();
+
+        let response: serde_json::Value = serde_json::from_str(&read_line(&mut client)).unwrap();
+        assert_eq!(response["error"]["code"], "agent_not_running");
+        drop(api_tx);
+        assert_eq!(responder.join().unwrap(), 1);
+    }
+
+    #[test]
+    fn agent_wait_release_returns_observed_matching_terminal_snapshot() {
+        let event_hub = EventHub::default();
+        let responder_event_hub = event_hub.clone();
+        let (api_tx, mut api_rx) = mpsc::unbounded_channel::<ApiRequestMessage>();
+        let responder = std::thread::spawn(move || {
+            let mut request_count = 0u64;
+            while let Some(msg) = api_rx.blocking_recv() {
+                let Method::AgentGet(_) = msg.request.method else {
+                    panic!("unexpected request: {:?}", msg.request.method);
+                };
+                request_count += 1;
+                responder_event_hub.push(crate::api::schema::EventEnvelope {
+                    event: crate::api::schema::EventKind::PaneAgentDetected,
+                    data: crate::api::schema::EventData::PaneAgentDetected {
+                        pane_id: "pane_1".into(),
+                        workspace_id: "ws_1".into(),
+                        agent: Some("pi".into()),
+                        released: true,
+                        final_status: Some(crate::api::schema::AgentStatus::Done),
+                        final_agent: Some(Box::new(agent_info(
+                            crate::api::schema::AgentStatus::Done,
+                            false,
+                            6,
+                        ))),
+                    },
+                });
+                msg.respond_to
+                    .send(
+                        serde_json::to_string(&SuccessResponse {
+                            id: msg.request.id,
+                            result: ResponseResult::AgentInfo {
+                                agent: agent_info(crate::api::schema::AgentStatus::Idle, true, 5),
+                            },
+                        })
+                        .unwrap(),
+                    )
+                    .unwrap();
+            }
+            request_count
+        });
+
+        let (mut client, server, _path) = local_stream_pair("agwait-release-observed");
+        client
+            .write_all(br#"{"id":"agent_wait","method":"agent.wait","params":{"target":"worker","until":["done"],"timeout_ms":1000}}"#)
+            .unwrap();
+        client.write_all(b"\n").unwrap();
+        client.flush().unwrap();
+
+        let running = Arc::new(AtomicBool::new(true));
+        handle_connection(server, &api_tx, &event_hub, &running, None).unwrap();
+
+        let response: serde_json::Value = serde_json::from_str(&read_line(&mut client)).unwrap();
+        assert_eq!(response["result"]["type"], "agent_info");
+        assert_eq!(response["result"]["agent"]["agent_status"], "done");
+        assert!(response["result"]["agent"]["background_work"].is_null());
+        assert_eq!(response["result"]["agent"]["revision"], 6);
+        drop(api_tx);
+        assert_eq!(responder.join().unwrap(), 1);
     }
 
     #[test]

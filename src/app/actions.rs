@@ -115,15 +115,17 @@ pub fn notification_sound_for_state_change_with_agent_labels(
 fn notification_sound_for_effective_state_change(
     suppress_active_tab_notifications: bool,
     change: &EffectiveStateChange,
+    deferred_completion: bool,
 ) -> Option<crate::sound::Sound> {
-    if change.state == change.previous_state {
+    if change.state == change.previous_state && !deferred_completion {
         return None;
     }
 
     match change.state {
         AgentState::Blocked => Some(crate::sound::Sound::Request),
         AgentState::Idle
-            if is_completion_transition(change) && !suppress_active_tab_notifications =>
+            if (is_completion_transition(change) || deferred_completion)
+                && !suppress_active_tab_notifications =>
         {
             Some(crate::sound::Sound::Done)
         }
@@ -161,14 +163,19 @@ pub fn notification_toast_for_state_change_with_agent_labels(
 fn notification_toast_for_effective_state_change(
     suppress_active_tab_notifications: bool,
     change: &EffectiveStateChange,
+    deferred_completion: bool,
 ) -> Option<ToastKind> {
-    if suppress_active_tab_notifications || change.state == change.previous_state {
+    if suppress_active_tab_notifications
+        || (change.state == change.previous_state && !deferred_completion)
+    {
         return None;
     }
 
     match change.state {
         AgentState::Blocked => Some(ToastKind::NeedsAttention),
-        AgentState::Idle if is_completion_transition(change) => Some(ToastKind::Finished),
+        AgentState::Idle if is_completion_transition(change) || deferred_completion => {
+            Some(ToastKind::Finished)
+        }
         _ => None,
     }
 }
@@ -177,11 +184,39 @@ pub fn notification_toast_for_pane_state_update(
     suppress_active_tab_notifications: bool,
     update: &PaneStateUpdate,
 ) -> Option<ToastKind> {
-    if suppress_active_tab_notifications || update.state == update.previous_state {
+    if update.completion_deferred {
+        return None;
+    }
+    if suppress_active_tab_notifications
+        || (update.state == update.previous_state && !update.deferred_completion)
+    {
         return None;
     }
 
+    if update.deferred_completion {
+        return Some(ToastKind::Finished);
+    }
+
     notification_toast_for_state_change_with_agent_labels(
+        suppress_active_tab_notifications,
+        update.previous_state,
+        update.state,
+        update.previous_agent_label.as_deref(),
+        update.agent_label.as_deref(),
+    )
+}
+
+pub fn notification_sound_for_pane_state_update(
+    suppress_active_tab_notifications: bool,
+    update: &PaneStateUpdate,
+) -> Option<crate::sound::Sound> {
+    if update.completion_deferred {
+        return None;
+    }
+    if update.deferred_completion {
+        return (!suppress_active_tab_notifications).then_some(crate::sound::Sound::Done);
+    }
+    notification_sound_for_state_change_with_agent_labels(
         suppress_active_tab_notifications,
         update.previous_state,
         update.state,
@@ -249,7 +284,10 @@ pub struct PaneStateUpdate {
     pub agent_name_changed: bool,
     pub agent_released: bool,
     pub agent_release_status: Option<crate::api::schema::AgentStatus>,
+    pub released_agent_name: Option<String>,
     pub background_work_changed: bool,
+    pub completion_deferred: bool,
+    pub deferred_completion: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -393,8 +431,9 @@ impl AppState {
             let workspace_matches = match query_kind {
                 NavigatorQueryKind::Empty => true,
                 NavigatorQueryKind::State(filter) => {
-                    let (state, seen) = ws.aggregate_state(&self.terminals);
-                    navigator_state_filter_matches(filter, state, seen)
+                    let (state, seen, background_work) =
+                        ws.aggregate_presentation(&self.terminals).parts();
+                    navigator_state_filter_matches(filter, state, seen, background_work)
                 }
                 NavigatorQueryKind::Text => navigator_matches(&query, &workspace_search_text),
             };
@@ -407,7 +446,7 @@ impl AppState {
 
             let expanded = !matches!(query_kind, NavigatorQueryKind::Empty)
                 || self.navigator.expanded_workspaces.contains(&ws.id);
-            let (state, seen) = ws.aggregate_state(&self.terminals);
+            let (state, seen, background_work) = ws.aggregate_presentation(&self.terminals).parts();
             let pane_count = ws.tabs.iter().map(|tab| tab.panes.len()).sum::<usize>();
             rows.push(NavigatorRow {
                 target: NavigatorTarget::Workspace { ws_idx },
@@ -416,6 +455,7 @@ impl AppState {
                 meta: activity,
                 status: state,
                 seen,
+                background_work,
                 is_current: self.active == Some(ws_idx),
                 is_workspace: true,
                 is_tab: false,
@@ -446,9 +486,12 @@ impl AppState {
             let mut tab_row = self.navigator_tab_row(ws_idx, tab_idx);
             let tab_matches = match query_kind {
                 NavigatorQueryKind::Empty => true,
-                NavigatorQueryKind::State(filter) => {
-                    navigator_state_filter_matches(filter, tab_row.status, tab_row.seen)
-                }
+                NavigatorQueryKind::State(filter) => navigator_state_filter_matches(
+                    filter,
+                    tab_row.status,
+                    tab_row.seen,
+                    tab_row.background_work,
+                ),
                 NavigatorQueryKind::Text => navigator_matches(
                     query,
                     if multi_tab {
@@ -466,7 +509,14 @@ impl AppState {
                 NavigatorQueryKind::Empty => pane_rows,
                 NavigatorQueryKind::State(filter) => pane_rows
                     .into_iter()
-                    .filter(|row| navigator_state_filter_matches(filter, row.status, row.seen))
+                    .filter(|row| {
+                        navigator_state_filter_matches(
+                            filter,
+                            row.status,
+                            row.seen,
+                            row.background_work,
+                        )
+                    })
                     .collect::<Vec<_>>(),
                 // A matching workspace or tab shows its whole subtree; panes
                 // keep their own match flag so context rows can be dimmed.
@@ -496,7 +546,7 @@ impl AppState {
         let label = ws
             .tab_display_name(tab_idx)
             .unwrap_or_else(|| (tab_idx + 1).to_string());
-        let (status, seen) = tab_aggregate_state(tab, &self.terminals);
+        let (status, seen, background_work) = tab_aggregate_state(tab, &self.terminals);
         let activity = tab_activity_summary(tab, &self.terminals);
         let pane_count = tab.panes.len();
         let meta = if activity.is_empty() {
@@ -512,6 +562,7 @@ impl AppState {
             meta,
             status,
             seen,
+            background_work,
             is_current: false,
             is_workspace: false,
             is_tab: true,
@@ -566,11 +617,17 @@ impl AppState {
             let state = terminal
                 .map(|terminal| terminal.state)
                 .unwrap_or(AgentState::Unknown);
+            let background_work = terminal.is_some_and(|terminal| terminal.background_work);
             let status_label = terminal
                 .map(|terminal| terminal.effective_presentation().state_labels)
-                .and_then(|labels| labels.get(state_label_text(state, pane.seen)).cloned());
-            let status = status_label
-                .or_else(|| agent_label.map(|_| state_label_text(state, pane.seen).to_string()));
+                .and_then(|labels| {
+                    labels
+                        .get(state_label_text(state, pane.seen, background_work))
+                        .cloned()
+                });
+            let status = status_label.or_else(|| {
+                agent_label.map(|_| state_label_text(state, pane.seen, background_work).to_string())
+            });
             let meta = match (agent_label, status.as_deref()) {
                 (Some(agent_label), Some(status)) => format!("{agent_label} · {status}"),
                 (Some(agent_label), None) => agent_label.to_string(),
@@ -589,6 +646,7 @@ impl AppState {
                 meta,
                 status: state,
                 seen: pane.seen,
+                background_work,
                 is_current,
                 is_workspace: false,
                 is_tab: false,
@@ -866,12 +924,15 @@ fn navigator_state_filter_matches(
     filter: NavigatorStateFilter,
     state: AgentState,
     seen: bool,
+    background_work: bool,
 ) -> bool {
     match filter {
         NavigatorStateFilter::Blocked => state == AgentState::Blocked,
-        NavigatorStateFilter::Working => state == AgentState::Working,
-        NavigatorStateFilter::Idle => state == AgentState::Idle && seen,
-        NavigatorStateFilter::Done => state == AgentState::Idle && !seen,
+        NavigatorStateFilter::Working => {
+            state == AgentState::Working || (state == AgentState::Idle && background_work)
+        }
+        NavigatorStateFilter::Idle => state == AgentState::Idle && seen && !background_work,
+        NavigatorStateFilter::Done => state == AgentState::Idle && !seen && !background_work,
     }
 }
 
@@ -889,7 +950,10 @@ fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
         .or_else(|| Some(command.clone()))
 }
 
-fn state_label_text(state: AgentState, seen: bool) -> &'static str {
+fn state_label_text(state: AgentState, seen: bool, background_work: bool) -> &'static str {
+    if state == AgentState::Idle && background_work {
+        return "waiting";
+    }
     match (state, seen) {
         (AgentState::Blocked, _) => "blocked",
         (AgentState::Working, _) => "working",
@@ -905,29 +969,22 @@ fn tab_aggregate_state(
         crate::terminal::TerminalId,
         crate::terminal::TerminalState,
     >,
-) -> (AgentState, bool) {
-    let mut aggregate = AgentState::Unknown;
-    let mut seen = true;
+) -> (AgentState, bool, bool) {
+    let mut aggregate = crate::workspace::AgentPresentation::Unknown;
     for pane in tab.panes.values() {
         let Some(terminal) = terminals.get(&pane.attached_terminal_id) else {
             continue;
         };
-        if state_priority(terminal.state, pane.seen) > state_priority(aggregate, seen) {
-            aggregate = terminal.state;
-            seen = pane.seen;
+        let presentation = crate::workspace::AgentPresentation::from_parts(
+            terminal.state,
+            pane.seen,
+            terminal.background_work,
+        );
+        if presentation.attention_priority() > aggregate.attention_priority() {
+            aggregate = presentation;
         }
     }
-    (aggregate, seen)
-}
-
-fn state_priority(state: AgentState, seen: bool) -> u8 {
-    match (state, seen) {
-        (AgentState::Blocked, _) => 5,
-        (AgentState::Working, _) => 4,
-        (AgentState::Idle, false) => 3,
-        (AgentState::Idle, true) => 2,
-        (AgentState::Unknown, _) => 1,
-    }
+    aggregate.parts()
 }
 
 fn tab_activity_summary(
@@ -959,15 +1016,17 @@ fn activity_summary_for_panes<'a>(
 ) -> String {
     let mut blocked = 0usize;
     let mut working = 0usize;
+    let mut waiting = 0usize;
     let mut done = 0usize;
     for pane in panes {
         let Some(terminal) = terminals.get(&pane.attached_terminal_id) else {
             continue;
         };
-        match (terminal.state, pane.seen) {
-            (AgentState::Blocked, _) => blocked += 1,
-            (AgentState::Working, _) => working += 1,
-            (AgentState::Idle, false) => done += 1,
+        match (terminal.state, pane.seen, terminal.background_work) {
+            (AgentState::Blocked, _, _) => blocked += 1,
+            (AgentState::Working, _, _) => working += 1,
+            (AgentState::Idle, _, true) => waiting += 1,
+            (AgentState::Idle, false, false) => done += 1,
             _ => {}
         }
     }
@@ -978,6 +1037,9 @@ fn activity_summary_for_panes<'a>(
     }
     if working > 0 {
         parts.push(format!("{working} working"));
+    }
+    if waiting > 0 {
+        parts.push(format!("{waiting} waiting"));
     }
     if done > 0 {
         parts.push(format!("{done} done"));
@@ -1037,7 +1099,7 @@ impl AppState {
                     .get_mut(&terminal_id)?
                     .expire_agent_metadata_at(scheduled_deadline, now)?;
                 let change = mutation.effective_state_change?;
-                let seen = self.apply_pane_state_change(ws_idx, pane_id, &change)?;
+                let seen = self.apply_pane_state_change(ws_idx, pane_id, &change, false, false)?;
                 let update = PaneStateUpdate {
                     pane_id,
                     ws_idx,
@@ -1054,7 +1116,10 @@ impl AppState {
                     agent_name_changed: false,
                     agent_released: false,
                     agent_release_status: None,
+                    released_agent_name: None,
                     background_work_changed: false,
+                    completion_deferred: false,
+                    deferred_completion: false,
                 };
                 Some(update)
             })
@@ -2780,20 +2845,24 @@ impl AppState {
                 visible_blocker,
                 visible_working,
                 background_work,
+                detector_generation,
                 process_exited,
                 observed_at,
             } => self
                 .update_terminal_state(pane_id, |terminal| {
-                    Some(terminal.set_detected_state_with_background_work_at(
-                        agent,
-                        state,
-                        visible_blocker,
-                        false,
-                        visible_working,
-                        background_work,
-                        process_exited,
-                        observed_at,
-                    ))
+                    Some(
+                        terminal.set_detected_state_with_background_work_generation_at(
+                            agent,
+                            state,
+                            visible_blocker,
+                            false,
+                            visible_working,
+                            background_work,
+                            detector_generation,
+                            process_exited,
+                            observed_at,
+                        ),
+                    )
                 })
                 .into_iter()
                 .collect(),
@@ -2957,7 +3026,7 @@ impl AppState {
             .clone();
         let previous_seen = self.workspaces[ws_idx].pane_state(pane_id)?.seen;
         let now = Instant::now();
-        let (mutation, managed_changed, agent_name_changed, unchanged_change) = {
+        let (mutation, managed_changed, agent_name_changed, previous_agent_name, unchanged_change) = {
             let terminal = self.terminals.get_mut(&terminal_id)?;
             let previous_agent_name = terminal.agent_name.clone();
             let mutation = update(terminal)?;
@@ -2970,6 +3039,7 @@ impl AppState {
                 mutation,
                 managed_changed,
                 agent_name_changed,
+                previous_agent_name,
                 unchanged_change,
             )
         };
@@ -2983,7 +3053,7 @@ impl AppState {
             && !agent_name_changed;
         let agent_released = mutation.agent_released;
         let change = mutation.effective_state_change.or(unchanged_change)?;
-        if change.previous_state != change.state {
+        if change.previous_state != change.state || mutation.deferred_completion {
             self.next_agent_state_change_seq += 1;
             if let Some(terminal) = self.terminals.get_mut(&terminal_id) {
                 terminal.last_agent_state_change_seq = Some(self.next_agent_state_change_seq);
@@ -2992,7 +3062,13 @@ impl AppState {
         let seen = if background_only_change {
             self.workspaces[ws_idx].pane_state(pane_id)?.seen
         } else {
-            self.apply_pane_state_change(ws_idx, pane_id, &change)?
+            self.apply_pane_state_change(
+                ws_idx,
+                pane_id,
+                &change,
+                mutation.completion_deferred,
+                mutation.deferred_completion,
+            )?
         };
         let update = PaneStateUpdate {
             pane_id,
@@ -3018,7 +3094,10 @@ impl AppState {
             agent_name_changed,
             agent_released,
             agent_release_status: agent_released.then(|| pane_agent_status(change.state, seen)),
+            released_agent_name: agent_released.then_some(previous_agent_name).flatten(),
             background_work_changed: mutation.background_work_changed,
+            completion_deferred: mutation.completion_deferred,
+            deferred_completion: mutation.deferred_completion,
         };
         Some(update)
     }
@@ -3085,6 +3164,8 @@ impl AppState {
         ws_idx: usize,
         pane_id: PaneId,
         change: &EffectiveStateChange,
+        completion_deferred: bool,
+        deferred_completion: bool,
     ) -> Option<bool> {
         let is_active_tab = self.pane_is_in_active_tab(ws_idx, pane_id);
         let suppress_active_tab_notifications =
@@ -3094,14 +3175,20 @@ impl AppState {
             .iter_mut()
             .find_map(|tab| tab.panes.get_mut(&pane_id))?;
 
-        if change.state != AgentState::Idle {
-            pane.seen = true;
-        } else if is_completion_transition(change) {
-            pane.seen = suppress_active_tab_notifications;
+        if !completion_deferred {
+            if change.state != AgentState::Idle {
+                pane.seen = true;
+            } else if is_completion_transition(change) || deferred_completion {
+                pane.seen = suppress_active_tab_notifications;
+            }
         }
         let seen = pane.seen;
 
-        if let Some(delivery) = self.record_or_deliver_agent_notification(ws_idx, pane_id, change) {
+        if completion_deferred {
+            self.pending_agent_notifications.remove(&pane_id);
+        } else if let Some(delivery) =
+            self.record_or_deliver_agent_notification(ws_idx, pane_id, change, deferred_completion)
+        {
             self.apply_agent_notification_delivery(&delivery);
         }
 
@@ -3113,6 +3200,7 @@ impl AppState {
         ws_idx: usize,
         pane_id: PaneId,
         change: &EffectiveStateChange,
+        deferred_completion: bool,
     ) -> Option<AgentNotificationDelivery> {
         self.pending_agent_notifications.remove(&pane_id);
 
@@ -3123,10 +3211,12 @@ impl AppState {
         let client_notification_kind = notification_toast_for_effective_state_change(
             suppress_active_tab_notifications,
             change,
+            deferred_completion,
         );
         let sound = notification_sound_for_effective_state_change(
             suppress_active_tab_notifications,
             change,
+            deferred_completion,
         );
         if client_notification_kind.is_none() && sound.is_none() {
             return None;
@@ -4848,6 +4938,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4887,6 +4978,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4897,6 +4989,232 @@ mod tests {
             state.toast.as_ref().map(|toast| toast.kind),
             Some(ToastKind::Finished)
         ));
+    }
+
+    #[test]
+    fn background_work_defers_completion_until_the_falling_edge() {
+        let mut state = app_with_workspaces(&["active", "background"]);
+        state.toast_config.delivery = crate::config::ToastDelivery::Herdr;
+        state.active = Some(0);
+        let pane_id = state.workspaces[1].tabs[0].root_pane;
+        let terminal_id = state.workspaces[1]
+            .pane_state(pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .set_detected_state(Some(Agent::Pi), AgentState::Working);
+
+        let deferred = state.handle_app_event(AppEvent::StateChanged {
+            pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: true,
+            detector_generation: 0,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+
+        assert_eq!(deferred.len(), 1);
+        assert!(deferred[0].completion_deferred);
+        assert!(!deferred[0].deferred_completion);
+        assert!(state.workspaces[1].pane_state(pane_id).unwrap().seen);
+        assert!(state.toast.is_none());
+        assert!(state.terminals[&terminal_id].deferred_completion_owed());
+        let deferred_sequence = state.terminals[&terminal_id].last_agent_state_change_seq;
+
+        let delivered = state.handle_app_event(AppEvent::StateChanged {
+            pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: false,
+            detector_generation: 0,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+
+        assert_eq!(delivered.len(), 1);
+        assert!(delivered[0].deferred_completion);
+        assert!(!state.workspaces[1].pane_state(pane_id).unwrap().seen);
+        assert!(matches!(
+            state.toast.as_ref().map(|toast| toast.kind),
+            Some(ToastKind::Finished)
+        ));
+        assert!(!state.terminals[&terminal_id].deferred_completion_owed());
+        assert!(state.terminals[&terminal_id].last_agent_state_change_seq > deferred_sequence);
+
+        state.toast = None;
+        for background_work in [true, false] {
+            let update = state.handle_app_event(AppEvent::StateChanged {
+                pane_id,
+                agent: Some(Agent::Pi),
+                state: AgentState::Idle,
+                visible_blocker: false,
+                visible_working: false,
+                background_work,
+                detector_generation: 0,
+                process_exited: false,
+                observed_at: std::time::Instant::now(),
+            });
+            assert!(update.iter().all(|update| !update.deferred_completion));
+        }
+        assert!(state.toast.is_none());
+    }
+
+    #[test]
+    fn process_exit_discards_deferred_completion() {
+        let mut state = app_with_workspaces(&["active", "background"]);
+        state.toast_config.delivery = crate::config::ToastDelivery::Herdr;
+        state.active = Some(0);
+        let pane_id = state.workspaces[1].tabs[0].root_pane;
+        let terminal_id = state.workspaces[1]
+            .pane_state(pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .set_detected_state(Some(Agent::Pi), AgentState::Working);
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: true,
+            detector_generation: 0,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+
+        let updates = state.handle_app_event(AppEvent::StateChanged {
+            pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: false,
+            detector_generation: 0,
+            process_exited: true,
+            observed_at: std::time::Instant::now(),
+        });
+
+        assert_eq!(
+            updates
+                .iter()
+                .filter(|update| update.deferred_completion)
+                .count(),
+            0
+        );
+        assert!(!state.terminals[&terminal_id].deferred_completion_owed());
+        assert!(state.toast.is_none());
+    }
+
+    #[test]
+    fn occupant_replacement_discards_completion_debt() {
+        let mut state = app_with_workspaces(&["active", "background"]);
+        let pane_id = state.workspaces[1].tabs[0].root_pane;
+        let terminal_id = state.workspaces[1]
+            .pane_state(pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .set_detected_state(Some(Agent::Pi), AgentState::Working);
+
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: true,
+            detector_generation: 7,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+        assert!(state.terminals[&terminal_id].deferred_completion_owed());
+
+        let updates = state.handle_app_event(AppEvent::StateChanged {
+            pane_id,
+            agent: Some(Agent::Claude),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: false,
+            detector_generation: 8,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+
+        assert_eq!(
+            updates
+                .iter()
+                .filter(|update| update.deferred_completion)
+                .count(),
+            0
+        );
+        assert!(!state.terminals[&terminal_id].deferred_completion_owed());
+    }
+
+    #[test]
+    fn detector_reset_discards_same_agent_completion_debt() {
+        let mut state = app_with_workspaces(&["active", "background"]);
+        let pane_id = state.workspaces[1].tabs[0].root_pane;
+        let terminal_id = state.workspaces[1]
+            .pane_state(pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .set_detected_state(Some(Agent::Pi), AgentState::Working);
+
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: true,
+            detector_generation: 11,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+        let updates = state.handle_app_event(AppEvent::StateChanged {
+            pane_id,
+            agent: Some(Agent::Pi),
+            state: AgentState::Idle,
+            visible_blocker: false,
+            visible_working: false,
+            background_work: false,
+            detector_generation: 12,
+            process_exited: false,
+            observed_at: std::time::Instant::now(),
+        });
+
+        assert_eq!(
+            updates
+                .iter()
+                .filter(|update| update.deferred_completion)
+                .count(),
+            0
+        );
+        assert!(!state.terminals[&terminal_id].deferred_completion_owed());
     }
 
     #[test]
@@ -4921,6 +5239,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4944,6 +5263,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4966,6 +5286,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -4976,6 +5297,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5022,6 +5344,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5047,6 +5370,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5080,6 +5404,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5092,6 +5417,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: true,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5120,6 +5446,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5132,6 +5459,7 @@ mod tests {
             visible_blocker: false,
             visible_working: true,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5156,6 +5484,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5182,6 +5511,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5210,6 +5540,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5266,6 +5597,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5285,6 +5617,7 @@ mod tests {
             visible_blocker: true,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5316,6 +5649,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5340,6 +5674,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5367,6 +5702,7 @@ mod tests {
             visible_blocker: false,
             visible_working: true,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5428,6 +5764,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5561,6 +5898,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5591,6 +5929,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5618,6 +5957,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5642,6 +5982,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });
@@ -5664,6 +6005,7 @@ mod tests {
             visible_blocker: false,
             visible_working: false,
             background_work: false,
+            detector_generation: 0,
             process_exited: false,
             observed_at: std::time::Instant::now(),
         });

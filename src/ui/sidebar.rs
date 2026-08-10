@@ -34,6 +34,7 @@ pub(crate) struct AgentPanelEntry {
     pub agent: Option<crate::detect::Agent>,
     pub state: AgentState,
     pub seen: bool,
+    pub background_work: bool,
     pub last_agent_state_change_seq: Option<u64>,
     pub state_labels: std::collections::HashMap<String, String>,
     pub tokens: std::collections::HashMap<String, String>,
@@ -174,6 +175,7 @@ fn collect_agent_panel_entries_with_runtimes(
                         agent: detail.agent,
                         state: detail.state,
                         seen: detail.seen,
+                        background_work: detail.background_work,
                         last_agent_state_change_seq: detail.last_agent_state_change_seq,
                         state_labels: detail.state_labels,
                         tokens: detail.tokens,
@@ -183,7 +185,14 @@ fn collect_agent_panel_entries_with_runtimes(
         .collect()
 }
 
-pub(super) fn agent_panel_status_key(state: AgentState, seen: bool) -> &'static str {
+pub(super) fn agent_panel_status_key(
+    state: AgentState,
+    seen: bool,
+    background_work: bool,
+) -> &'static str {
+    if state == AgentState::Idle && background_work {
+        return "waiting";
+    }
     match (state, seen) {
         (AgentState::Idle, false) => "done",
         (AgentState::Idle, true) => "idle",
@@ -194,7 +203,7 @@ pub(super) fn agent_panel_status_key(state: AgentState, seen: bool) -> &'static 
 }
 
 fn workspace_row_height(app: &AppState, ws: &crate::workspace::Workspace, indented: bool) -> u16 {
-    let (state, seen) = ws.aggregate_state(&app.terminals);
+    let (state, seen, background_work) = ws.aggregate_presentation(&app.terminals).parts();
     let label = if indented {
         grouped_child_display_label(
             &ws.display_name_from_terminals(&app.terminals),
@@ -210,7 +219,7 @@ fn workspace_row_height(app: &AppState, ws: &crate::workspace::Workspace, indent
         SpaceTokenContext {
             workspace: &label,
             branch: ws.branch().as_deref(),
-            state_text: state_label(state, seen),
+            state_text: state_label(state, seen, background_work),
             ahead_behind: ws.git_ahead_behind(),
             tokens: &token_values,
             suppress_git_details: indented,
@@ -238,23 +247,14 @@ fn workspace_entry_gap(app: &AppState, entries: &[WorkspaceListEntry], entry_idx
     }
 }
 
-fn workspace_attention_priority(state: AgentState, seen: bool) -> u8 {
-    match (state, seen) {
-        (AgentState::Blocked, _) => 4,
-        (AgentState::Idle, false) => 3,
-        (AgentState::Working, _) => 2,
-        (AgentState::Idle, true) => 1,
-        (AgentState::Unknown, _) => 0,
-    }
-}
-
-fn space_aggregate_state(app: &AppState, key: &str) -> (AgentState, bool) {
+fn space_aggregate_state(app: &AppState, key: &str) -> (AgentState, bool, bool) {
     app.workspaces
         .iter()
         .filter(|ws| ws.worktree_space().is_some_and(|space| space.key == key))
-        .map(|ws| ws.aggregate_state(&app.terminals))
-        .max_by_key(|(state, seen)| workspace_attention_priority(*state, *seen))
-        .unwrap_or((AgentState::Unknown, true))
+        .map(|ws| ws.aggregate_presentation(&app.terminals))
+        .max_by_key(|presentation| presentation.attention_priority())
+        .unwrap_or(crate::workspace::AgentPresentation::Unknown)
+        .parts()
 }
 
 pub(crate) fn workspace_parent_group_state(
@@ -545,9 +545,13 @@ pub(crate) fn agent_panel_body_rect(area: Rect, has_scrollbar: bool) -> Rect {
 fn resolved_agent_rows(app: &AppState, entry: &AgentPanelEntry) -> Vec<Vec<ResolvedToken>> {
     let label = entry
         .state_labels
-        .get(agent_panel_status_key(entry.state, entry.seen))
+        .get(agent_panel_status_key(
+            entry.state,
+            entry.seen,
+            entry.background_work,
+        ))
         .map(String::as_str)
-        .unwrap_or_else(|| state_label(entry.state, entry.seen));
+        .unwrap_or_else(|| state_label(entry.state, entry.seen, entry.background_work));
     tokens::agent_rows(&app.sidebar_agents, entry, label)
 }
 
@@ -783,8 +787,15 @@ pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: 
         if y >= ws_area.y + ws_area.height {
             break;
         }
-        let (agg_state, agg_seen) = ws.aggregate_state(&app.terminals);
-        let (icon, icon_style) = state_icon(agg_state, agg_seen, app.status_indicators, p);
+        let (agg_state, agg_seen, agg_background_work) =
+            ws.aggregate_presentation(&app.terminals).parts();
+        let (icon, icon_style) = state_icon(
+            agg_state,
+            agg_seen,
+            agg_background_work,
+            app.status_indicators,
+            p,
+        );
         let is_selected = visible_idx == app.selected && is_navigating;
         let is_active = Some(visible_idx) == app.active;
         let row_style = if is_selected {
@@ -850,8 +861,13 @@ pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: 
             } else {
                 Style::default().fg(p.overlay0)
             };
-            let (icon, icon_style) =
-                state_icon(detail.state, detail.seen, app.status_indicators, p);
+            let (icon, icon_style) = state_icon(
+                detail.state,
+                detail.seen,
+                detail.background_work,
+                app.status_indicators,
+                p,
+            );
 
             if is_active {
                 let buf = frame.buffer_mut();
@@ -1244,7 +1260,8 @@ fn render_workspace_list(
         let is_active = Some(i) == app.active;
         let is_dragged = dragged_ws_idx == Some(i);
         let highlighted = selected || is_active || is_dragged;
-        let (agg_state, agg_seen) = ws.aggregate_state(&app.terminals);
+        let (agg_state, agg_seen, agg_background_work) =
+            ws.aggregate_presentation(&app.terminals).parts();
 
         if highlighted {
             let bg = if selected {
@@ -1290,14 +1307,25 @@ fn render_workspace_list(
                     )
                 })
                 .is_none_or(|entry_idx| !next_entry_is_indented_workspace(&entries, entry_idx));
-        let (display_state, display_seen) = parent_group
+        let (display_state, display_seen, display_background_work) = parent_group
             .as_ref()
             .filter(|(_, collapsed)| *collapsed)
             .map(|(key, _)| space_aggregate_state(app, key))
-            .unwrap_or((agg_state, agg_seen));
-        let state_icon = state_icon(display_state, display_seen, app.status_indicators, p);
+            .unwrap_or((agg_state, agg_seen, agg_background_work));
+        let state_icon = state_icon(
+            display_state,
+            display_seen,
+            display_background_work,
+            app.status_indicators,
+            p,
+        );
         let state_text_style = Style::default()
-            .fg(state_label_color(display_state, display_seen, p))
+            .fg(state_label_color(
+                display_state,
+                display_seen,
+                display_background_work,
+                p,
+            ))
             .add_modifier(Modifier::DIM);
         let branch_style = Style::default().fg(if selected || is_active {
             p.mauve
@@ -1310,7 +1338,7 @@ fn render_workspace_list(
             SpaceTokenContext {
                 workspace: &display_label,
                 branch: ws.branch().as_deref(),
-                state_text: state_label(display_state, display_seen),
+                state_text: state_label(display_state, display_seen, display_background_work),
                 ahead_behind: ws.git_ahead_behind(),
                 tokens: &token_values,
                 suppress_git_details: card.indented,
@@ -1484,7 +1512,7 @@ fn render_agent_detail(
     let mut row_y = body.y;
     let body_bottom = body.y + body.height;
     for (index, detail) in details.iter().enumerate().skip(scroll) {
-        let label_color = state_label_color(detail.state, detail.seen, p);
+        let label_color = state_label_color(detail.state, detail.seen, detail.background_work, p);
         let rows = resolved_agent_rows(app, detail);
         let height = (rows.len().max(1) as u16).min(body.height);
         if row_y.saturating_add(height) > body_bottom {
@@ -1508,7 +1536,13 @@ fn render_agent_detail(
             Style::default().fg(label_color).add_modifier(Modifier::DIM)
         };
         let agent_style = Style::default().fg(p.overlay0).add_modifier(Modifier::DIM);
-        let state_icon = state_icon(detail.state, detail.seen, app.status_indicators, p);
+        let state_icon = state_icon(
+            detail.state,
+            detail.seen,
+            detail.background_work,
+            app.status_indicators,
+            p,
+        );
 
         for (row_index, resolved) in rows.iter().take(height as usize).enumerate() {
             let mut spans = vec![Span::raw(if row_index == 0 { " " } else { "   " })];

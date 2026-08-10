@@ -70,6 +70,7 @@ pub(crate) fn apply_agent_view(app: &AppState, entries: &mut Vec<AgentPanelEntry
                 std::cmp::Reverse(super::api_helpers::tab_attention_priority(
                     entry.state,
                     entry.seen,
+                    entry.background_work,
                 )),
                 std::cmp::Reverse(entry.last_agent_state_change_seq),
             )
@@ -203,7 +204,7 @@ fn validate_field_value(field: &AgentViewField, value: &AgentViewValue) -> Resul
                 AgentViewField::Builtin(AgentViewBuiltinField::Status)
             ) && !matches!(
                 value.as_str(),
-                "idle" | "working" | "blocked" | "done" | "unknown"
+                "idle" | "working" | "blocked" | "waiting" | "done" | "unknown"
             ) {
                 return Err(format!("unknown agent status `{value}`"));
             }
@@ -308,9 +309,11 @@ fn builtin_field_value(
     field: AgentViewBuiltinField,
 ) -> Option<EvalValue> {
     match field {
-        AgentViewBuiltinField::Status => {
-            Some(EvalValue::String(status_name(entry.state, entry.seen)))
-        }
+        AgentViewBuiltinField::Status => Some(EvalValue::String(status_name(
+            entry.state,
+            entry.seen,
+            entry.background_work,
+        ))),
         AgentViewBuiltinField::WorkspaceId => app
             .workspaces
             .get(entry.ws_idx)
@@ -372,11 +375,17 @@ fn sort_value(
                 .and_then(|workspace| workspace.public_pane_number(entry.pane_id))
                 .map(|number| EvalValue::Number(number as u64)),
             AgentViewBuiltinSortField::Attention => Some(EvalValue::Number(u64::from(
-                super::api_helpers::tab_attention_priority(entry.state, entry.seen),
+                super::api_helpers::tab_attention_priority(
+                    entry.state,
+                    entry.seen,
+                    entry.background_work,
+                ),
             ))),
-            AgentViewBuiltinSortField::Status => {
-                Some(EvalValue::String(status_name(entry.state, entry.seen)))
-            }
+            AgentViewBuiltinSortField::Status => Some(EvalValue::String(status_name(
+                entry.state,
+                entry.seen,
+                entry.background_work,
+            ))),
             AgentViewBuiltinSortField::Agent => {
                 entry.agent_kind_label.clone().map(EvalValue::String)
             }
@@ -388,7 +397,10 @@ fn sort_value(
     }
 }
 
-fn status_name(state: crate::detect::AgentState, seen: bool) -> String {
+fn status_name(state: crate::detect::AgentState, seen: bool, background_work: bool) -> String {
+    if state == crate::detect::AgentState::Idle && background_work {
+        return "waiting".to_string();
+    }
     let status = match (state, seen) {
         (crate::detect::AgentState::Idle, false) => AgentStatus::Done,
         (crate::detect::AgentState::Idle, true) => AgentStatus::Idle,
@@ -569,5 +581,43 @@ mod tests {
         assert!(validate_agent_view(&mut spec)
             .unwrap_err()
             .contains("context type"));
+    }
+
+    #[test]
+    fn waiting_status_filter_is_valid_and_selects_waiting_entries() {
+        let mut state = state_with_agents();
+        let pane_id = state.workspaces[0].tabs[0].root_pane;
+        let terminal_id = state.workspaces[0].tabs[0].panes[&pane_id]
+            .attached_terminal_id
+            .clone();
+        state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .background_work = true;
+        let mut spec = AgentViewSetParams {
+            source: "example.views".to_string(),
+            label: None,
+            filter: Some(AgentViewFilter::Eq {
+                field: AgentViewField::Builtin(AgentViewBuiltinField::Status),
+                value: AgentViewValue::String("waiting".to_string()),
+            }),
+            sort: Vec::new(),
+        };
+
+        assert_eq!(validate_agent_view(&mut spec), Ok(()));
+        state.agent_view_override = Some(spec);
+        let entries = crate::ui::agent_panel_entries(&state);
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].ws_idx, 0);
+        assert_eq!(
+            status_name(
+                entries[0].state,
+                entries[0].seen,
+                entries[0].background_work
+            ),
+            "waiting"
+        );
     }
 }

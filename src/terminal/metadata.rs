@@ -165,13 +165,6 @@ impl TerminalState {
         }
 
         let now = Instant::now();
-        if self
-            .agent_metadata
-            .get(&report.source)
-            .is_some_and(|metadata| self.agent_metadata_is_expired(metadata, now))
-        {
-            self.agent_metadata.remove(&report.source);
-        }
         let previous_agent_label = self.effective_agent_label().map(str::to_string);
         let previous_known_agent = self.effective_known_agent();
         let previous_state = self.state;
@@ -179,7 +172,20 @@ impl TerminalState {
         let has_set_fields = report.title.is_some()
             || report.display_agent.is_some()
             || !report.state_labels.is_empty();
-
+        let partial_merge =
+            report.clear_title || report.clear_display_agent || report.clear_state_labels;
+        if self
+            .agent_metadata
+            .get(&report.source)
+            .is_some_and(|metadata| {
+                self.agent_metadata_is_expired(metadata, now)
+                    || (partial_merge
+                        && has_set_fields
+                        && self.agent_metadata_deadline_passed(metadata, now))
+            })
+        {
+            self.agent_metadata.remove(&report.source);
+        }
         let report_source = report.source.clone();
         let report_has_ttl = report.ttl.is_some();
 
@@ -291,6 +297,8 @@ impl TerminalState {
             session_ref_changed: false,
             agent_released: false,
             background_work_changed: false,
+            completion_deferred: false,
+            deferred_completion: false,
         })
     }
     pub fn effective_title(&self) -> Option<String> {
@@ -375,6 +383,8 @@ impl TerminalState {
             session_ref_changed: false,
             agent_released: false,
             background_work_changed: false,
+            completion_deferred: false,
+            deferred_completion: false,
         })
     }
 
@@ -498,6 +508,13 @@ impl TerminalState {
     }
 
     fn agent_metadata_is_expired(&self, metadata: &AgentMetadata, now: Instant) -> bool {
+        if metadata.expiry_event_pending {
+            return false;
+        }
+        self.agent_metadata_deadline_passed(metadata, now)
+    }
+
+    fn agent_metadata_deadline_passed(&self, metadata: &AgentMetadata, now: Instant) -> bool {
         self.agent_metadata_expiry(metadata)
             .is_some_and(|deadline| now >= deadline)
     }
@@ -1174,5 +1191,58 @@ mod tests {
         let presentation = terminal.effective_presentation();
         assert_eq!(presentation.title, None);
         assert_eq!(presentation.display_agent.as_deref(), Some("Fresh display"));
+    }
+
+    #[test]
+    fn partial_update_does_not_preserve_expired_visible_title() {
+        let mut terminal = test_terminal();
+        terminal.set_hook_authority(
+            "herdr:claude".into(),
+            "claude".into(),
+            AgentState::Working,
+            None,
+            None,
+        );
+        terminal.set_agent_metadata(AgentMetadataReport {
+            source: "user:status".into(),
+            agent_label: Some("claude".into()),
+            applies_to_source: Some("herdr:claude".into()),
+            title: Some("Expired title".into()),
+            display_agent: None,
+            state_labels: HashMap::from([("working".into(), "Working".into())]),
+            clear_title: false,
+            clear_display_agent: false,
+            clear_state_labels: false,
+            ttl: Some(Duration::ZERO),
+            seq: None,
+        });
+        assert_eq!(terminal.effective_title().as_deref(), Some("Expired title"));
+        assert!(terminal.next_agent_metadata_expiry().is_some());
+
+        let mutation = terminal.set_agent_metadata(AgentMetadataReport {
+            source: "user:status".into(),
+            agent_label: Some("claude".into()),
+            applies_to_source: Some("herdr:claude".into()),
+            title: None,
+            display_agent: Some("Fresh display".into()),
+            state_labels: HashMap::new(),
+            clear_title: false,
+            clear_display_agent: false,
+            clear_state_labels: true,
+            ttl: None,
+            seq: None,
+        });
+
+        let presentation = terminal.effective_presentation();
+        let change = mutation.unwrap().effective_state_change.unwrap();
+        assert_eq!(
+            change.previous_presentation.title.as_deref(),
+            Some("Expired title")
+        );
+        assert_eq!(change.presentation, presentation);
+        assert_eq!(presentation.title, None);
+        assert_eq!(presentation.display_agent.as_deref(), Some("Fresh display"));
+        assert!(presentation.state_labels.is_empty());
+        assert_eq!(terminal.next_agent_metadata_expiry(), None);
     }
 }

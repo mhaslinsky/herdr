@@ -44,8 +44,9 @@ Agent states are:
 | --- | --- |
 | `blocked` | The agent needs input, approval, or a decision. |
 | `working` | The agent is actively running. |
+| `waiting` | The agent is ready for input while detected background work is still running. |
 | `done` | The agent finished and you have not looked at it yet. |
-| `idle` | The agent is finished or waiting and has been seen. |
+| `idle` | The agent is ready for input, has no detected background work, and has been seen. |
 | `unknown` | Herdr cannot confidently classify the state. |
 
 ## Session

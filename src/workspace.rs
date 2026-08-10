@@ -22,7 +22,9 @@ mod tab;
 #[cfg(test)]
 use self::git::git_ahead_behind;
 use self::git::git_status_cache_key_for_space;
-pub(crate) use self::{git::git_status_snapshot_for_cwd_with_demand, tab::MovedPane};
+pub(crate) use self::{
+    aggregate::AgentPresentation, git::git_status_snapshot_for_cwd_with_demand, tab::MovedPane,
+};
 pub use self::{
     git::{
         derive_label_from_cwd, fallback_label_from_cwd, git_branch, git_space_metadata,
