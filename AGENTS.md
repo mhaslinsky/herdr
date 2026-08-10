@@ -101,6 +101,14 @@ Run `just check` before committing unless Can explicitly accepts narrower valida
 
 Unit tests live next to the code (`#[cfg(test)] mod tests`). New `AppState` or `Workspace` behavior should be testable with `AppState::test_new()` and `Workspace::test_new()` without PTYs.
 
+### A green local run on macOS is not the full suite
+
+`tests/cli.rs` carries `#![cfg(not(target_os = "macos"))]`, so the CLI **integration** crate, the one that drives the built binary as a subprocess, is not compiled on macOS. `cargo nextest list -E 'binary(cli)'` returns nothing there. The `cli::` unit tests inside the main binary still run normally (86 of them at the time of writing), so this is a gap in end-to-end CLI coverage, not in CLI code coverage generally.
+
+The CI matrix reflects the same split. The `ubuntu-latest` leg is the only one running `nextest_filter: all()`, while `macos-latest` additionally excludes the `live_handoff` binary (`.github/workflows/ci.yml`). A macOS-only run can therefore be well over a hundred tests short of the Linux run and still report success.
+
+So a change to what the CLI emits at the process boundary, wait settlement, error message text, exit codes, or JSON error shapes, is not verified until Linux has run it. Treat the Ubuntu CI leg as the gate for that class of change rather than a redundant copy of the local run, and name which suite a result came from when reporting one.
+
 For broad refactors or release-risk regressions, classify the risk before editing. Treat changes as refactor-risk when they touch two or more core surfaces, persisted state, protocol/API IDs, workspace/tab/pane identity, restore/handoff, agent detection authority, or UI/input state projection. Before moving code, identify the protected behavior and add or name characterization tests. Identity/state refactors should use the test-only invariants `AppState::assert_invariants_for_test()` or `Workspace::assert_invariants_for_test()` with adversarial state from `AppState::test_with_adversarial_identity_state()` or `Workspace::test_adversarial_identity_state()`. Run a roundtable for broad refactors and release-risk regressions, not for routine local fixes.
 
 When testing a new Herdr build from inside an existing Herdr session, use
