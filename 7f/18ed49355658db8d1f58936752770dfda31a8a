@@ -1,0 +1,21 @@
+src/detect/manifests/claude.toml
+  s_b5509776580e6d::t_042333f19ef580 20-22
+  s_b5509776580e6d::t_3bbd652ba61dda 2
+  s_b5509776580e6d::t_dcab0c5ad8361f 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "7f18ed49355658db8d1f58936752770dfda31a8a",
+  "prompts": {},
+  "sessions": {
+    "s_b5509776580e6d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c6351b77-ab40-453c-b098-10e0e7551fd6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
