@@ -1,7 +1,16 @@
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Prevent developer Git config from spawning asynchronous writers inside test fixtures.
+/// Process-wide isolation covers production Git calls under test, and nextest isolates tests.
+fn isolate_git_from_developer_config() {
+    std::env::set_var("GIT_CONFIG_GLOBAL", "/dev/null");
+    std::env::set_var("GIT_CONFIG_NOSYSTEM", "1");
+    std::env::set_var("GIT_TERMINAL_PROMPT", "0");
+}
+
 pub(super) fn temp_test_dir(name: &str) -> PathBuf {
+    isolate_git_from_developer_config();
     let unique = format!(
         "herdr-workspace-tests-{}-{}-{}",
         name,
