@@ -1,5 +1,5 @@
 id = "claude"
-version = "2026.08.13.1"
+version = "2026.08.13.2"
 min_engine_version = 4
 updated_at = "2026-08-13T00:00:00Z"
 aliases = ["claude-code"]
