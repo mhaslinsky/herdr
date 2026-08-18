@@ -1,0 +1,542 @@
+src/server/headless.rs
+  s_bc40888563088b::t_52aeafcdb9da13 2200
+  s_bc40888563088b::t_6db3ea5f114a56 2333
+  s_bc40888563088b::t_a7c0246c12a79e 11267-11268
+  s_bc40888563088b::t_dad7c9a6f6c275 2197-2199
+  s_bc40888563088b::t_7a967cbb7fc76a 2201-2203
+  s_bc40888563088b::t_64acce39415659 11264-11266
+  s_bc40888563088b::t_c3d6b1caf65a45 11269-11271
+  s_bc40888563088b::t_1c4d64067acc74 277,303-310,325-328,476,496,514-515,523-524,564,568,574-576,594-596,624-626,655-657,701-712,727-742,757,761-762,788-789,832-850,1154-1161,1173,1176,1184,1187,1323,1470-1474,1532,1738-1741,1750-1753,1759-1771,1990,2164-2196,2204-2245,2250,2266-2270,2357-2361,2381-2382,2402-2403,2537,3351,3360,3442-3445,3451-3459,3462-3465,3712,3992,3994-3995,3997-4017,4036-4054,4059-4064,4719-4720,4759,4761,4775-4776,4965,4968-4972,5015,5080,5119-5123,5129,5131-5133,5282,5297-5298,5306-5307,5358-5371,5401,5427,5461-5477,5582-5886,6631,9151-9224,9591-9601,11220-11263,11272-11280
+.agents/skills/herdr-pre-release-audit/SKILL.md
+  s_bc40888563088b::t_58c36a7b3d8783 16,18-19
+.agents/skills/herdr-pre-release-audit/references/pre-release-audit.md
+  s_bc40888563088b::t_57747f9ce11d7c 72,79,81-83,120-122,126-128
+.githooks/pre-commit
+  s_bc40888563088b::t_c32066538a94b0 7-19
+.github/APPROVED_CONTRIBUTORS
+  s_bc40888563088b::t_2c8ab1fefbd79f 71
+.github/workflows/windows-arm64.yml
+  s_bc40888563088b::t_b9868d67ae2612 1-37
+AGENTS.md
+  s_bc40888563088b::t_7130d864d9b893 38-62,195-196,203,265
+CONTRIBUTING.md
+  s_bc40888563088b::t_a2eafeb593aa36 9,11,29
+Cargo.lock
+  s_bc40888563088b::t_e486b246e2d33f 695,1856,1863,1872-1881,1888-1890,1892,1894
+Cargo.toml
+  s_bc40888563088b::t_06e3dc72db9e99 17,42-43
+SPONSORS.md
+  s_bc40888563088b::t_f961d85d98472b 3-4,10-11,67
+docs/next/CHANGELOG.md
+  s_bc40888563088b::t_55c721474bfee8 6-11,16,20-21,26-39
+docs/next/api/herdr-api.schema.json
+  s_bc40888563088b::t_af00561d633ae6 2123,7182,9307-9314
+docs/next/website/src/content/docs/agent-skill.mdx
+  s_bc40888563088b::t_1c4b2389438836 24,53
+docs/next/website/src/content/docs/agents.mdx
+  s_bc40888563088b::t_29be471321b6b7 12,23,53,61,100
+docs/next/website/src/content/docs/concepts.mdx
+  s_bc40888563088b::t_ac064e3fed0afd 86
+docs/next/website/src/content/docs/config-reference.mdx
+  s_bc40888563088b::t_32e37f6a9a5081 8
+docs/next/website/src/content/docs/configuration.mdx
+  s_bc40888563088b::t_168bf68db48816 8,35,53-64,83,105,109,152-160,232,266-267,276,286-320,424,443,449
+docs/next/website/src/content/docs/how-to-work.mdx
+  s_bc40888563088b::t_116ec66f7f46cb 45,49
+docs/next/website/src/content/docs/index.mdx
+  s_bc40888563088b::t_7d4de0f324d877 36,42
+docs/next/website/src/content/docs/install.mdx
+  s_bc40888563088b::t_c0f08e5d4cf6bd 22,60,121,135,141
+docs/next/website/src/content/docs/integrations.mdx
+  s_bc40888563088b::t_ce05e2f086212b 3,6,25,47,56,61,63,84,86,92,94,262-275,314
+docs/next/website/src/content/docs/ja/agent-automation.mdx
+  s_bc40888563088b::t_380409b5b6395e 44,46,72,76
+docs/next/website/src/content/docs/ja/agents.mdx
+  s_bc40888563088b::t_beba71e85271f4 23
+docs/next/website/src/content/docs/ja/cli-reference.mdx
+  s_bc40888563088b::t_39a3c8bc917010 288,290,292,311,343,358
+docs/next/website/src/content/docs/ja/configuration.mdx
+  s_bc40888563088b::t_f7e64d58425f10 53-64,152-160,262-263,272,280-325
+docs/next/website/src/content/docs/ja/integrations.mdx
+  s_bc40888563088b::t_ccf51c5c2506a3 3,28,50,63,94,96,264-277
+docs/next/website/src/content/docs/ja/session-state.mdx
+  s_bc40888563088b::t_ad1f6f749691ee 79
+docs/next/website/src/content/docs/ja/socket-api.mdx
+  s_bc40888563088b::t_05751bda759fe2 110,276
+docs/next/website/src/content/docs/keyboard.mdx
+  s_bc40888563088b::t_f68e486e1516c5 10,16,84
+docs/next/website/src/content/docs/marketplace.mdx
+  s_bc40888563088b::t_942c0450bb38a0 6-8,26-27,33-34
+docs/next/website/src/content/docs/persistence-remote.mdx
+  s_bc40888563088b::t_9babe32377e001 40,47,85,163
+docs/next/website/src/content/docs/plugins.mdx
+  s_bc40888563088b::t_81b6e8358469c2 18-21,24-29,37-40,42-46,50-52,215-216,242-244
+docs/next/website/src/content/docs/quick-start.mdx
+  s_bc40888563088b::t_7f2a676be3d2d3 16,20,34,52,58
+docs/next/website/src/content/docs/session-state.mdx
+  s_bc40888563088b::t_a7b64ffd7042e6 6,37,39,52,79,95,97
+docs/next/website/src/content/docs/socket-api.mdx
+  s_bc40888563088b::t_45dece362489e8 114,224-230,385,490-493,502-504,506-509,565,708-709,933-934
+docs/next/website/src/content/docs/troubleshooting.mdx
+  s_bc40888563088b::t_592ae26bea11db 30,32,75
+docs/next/website/src/content/docs/windows-beta.mdx
+  s_bc40888563088b::t_84a1edeba0eff5 6,8,10,44,57,67,71,78
+docs/next/website/src/content/docs/zh-cn/agents.mdx
+  s_bc40888563088b::t_347e54c8103a55 23
+docs/next/website/src/content/docs/zh-cn/cli-reference.mdx
+  s_bc40888563088b::t_3af23fe4a8d811 288,290,292,311,343,358
+docs/next/website/src/content/docs/zh-cn/configuration.mdx
+  s_bc40888563088b::t_16d7f6d8c3f3f8 53-64,152-160,262-263,272,280-325
+docs/next/website/src/content/docs/zh-cn/integrations.mdx
+  s_bc40888563088b::t_4832fe38faac58 3,28,50,63,94,96,264-277
+docs/next/website/src/content/docs/zh-cn/session-state.mdx
+  s_bc40888563088b::t_4fea4412b79341 79
+docs/next/website/src/content/docs/zh-cn/socket-api.mdx
+  s_bc40888563088b::t_e8a92474e072dc 110,276
+docs/next/website/src/data/config-reference.json
+  s_bc40888563088b::t_8954bd158af79d 15-32,79-90,424-435,568-591,767-791,1132-1142,1236
+docs/preview/website/src/content/docs/agent-automation.mdx
+  s_bc40888563088b::t_ee9c9e3155496b 6,44,46,72,76
+docs/preview/website/src/content/docs/agent-skill.mdx
+  s_bc40888563088b::t_aa8b88c1f57cf0 24,53
+docs/preview/website/src/content/docs/agents.mdx
+  s_bc40888563088b::t_feee962fdf1f20 12,23,53,61,100,107
+docs/preview/website/src/content/docs/cli-reference.mdx
+  s_bc40888563088b::t_9cd15a597d396d 8,133,146,159,177-178,192-197,258,308,310,312,344,375,391,423,431,469
+docs/preview/website/src/content/docs/concepts.mdx
+  s_bc40888563088b::t_137fb4f5235f9d 85
+docs/preview/website/src/content/docs/config-reference.mdx
+  s_bc40888563088b::t_c3f77da2ccfb90 8
+docs/preview/website/src/content/docs/configuration.mdx
+  s_bc40888563088b::t_f98de7b676a4c5 8,35,53-64,83,105,109,113,120,152-160,232,265-267,276-277,286-329,424,443-445,449
+docs/preview/website/src/content/docs/how-to-work.mdx
+  s_bc40888563088b::t_d3a65be7518dc3 45,49
+docs/preview/website/src/content/docs/index.mdx
+  s_bc40888563088b::t_003b4823258ad9 36,42
+docs/preview/website/src/content/docs/install.mdx
+  s_bc40888563088b::t_496460f382c9be 22,60,121,135,141
+docs/preview/website/src/content/docs/integrations.mdx
+  s_bc40888563088b::t_37dce1b6d4ba92 3,6,25,47,56,61-82,84,86,88-94,178,242,262-275,286,300,314,328
+docs/preview/website/src/content/docs/ja/agent-automation.mdx
+  s_bc40888563088b::t_09ea2fd25fbe7d 44,46,72,76
+docs/preview/website/src/content/docs/ja/agents.mdx
+  s_bc40888563088b::t_e8bdc579985e29 23,107
+docs/preview/website/src/content/docs/ja/cli-reference.mdx
+  s_bc40888563088b::t_21cc08003ed618 288,290,292,311,343,358
+docs/preview/website/src/content/docs/ja/configuration.mdx
+  s_bc40888563088b::t_b4588353d49cd8 53-64,113,120,152-160,261-263,272-273,280-325,441-442
+docs/preview/website/src/content/docs/ja/integrations.mdx
+  s_bc40888563088b::t_d1e58230ef3470 3,28,50,63,65,67,69-96,180,244,264-277,288,302,330
+docs/preview/website/src/content/docs/ja/marketplace.mdx
+  s_bc40888563088b::t_4f475495eb8e21 12-16,39-43,47-52
+docs/preview/website/src/content/docs/ja/persistence-remote.mdx
+  s_bc40888563088b::t_7b0dc12eba7197 66,68
+docs/preview/website/src/content/docs/ja/plugins.mdx
+  s_bc40888563088b::t_14986f25245bcc 361-363,366-369
+docs/preview/website/src/content/docs/ja/session-state.mdx
+  s_bc40888563088b::t_86b1e427978da8 79
+docs/preview/website/src/content/docs/ja/socket-api.mdx
+  s_bc40888563088b::t_76cbef3bdca7bb 110,276
+docs/preview/website/src/content/docs/ja/windows-beta.mdx
+  s_bc40888563088b::t_b87cc194e2a625 29-30,52,59,97,104,107,110
+docs/preview/website/src/content/docs/keyboard.mdx
+  s_bc40888563088b::t_54dc956d2f6cab 10,16,67,84
+docs/preview/website/src/content/docs/marketplace.mdx
+  s_bc40888563088b::t_2019bd206a1a21 6-8,12-17,26-27,33-34,39-44,49-54
+docs/preview/website/src/content/docs/persistence-remote.mdx
+  s_bc40888563088b::t_e3e5017e63c9c1 40,47,66,68,85,163
+docs/preview/website/src/content/docs/plugins.mdx
+  s_bc40888563088b::t_b1503207537c4f 18-21,24-29,37-40,42-46,50-52,215-216,242-244,365-373
+docs/preview/website/src/content/docs/quick-start.mdx
+  s_bc40888563088b::t_2b5b7d86c4032b 16,20,24,34,52,58
+docs/preview/website/src/content/docs/session-state.mdx
+  s_bc40888563088b::t_0a2c399c6d2932 6,37,39,52,79,95,97
+docs/preview/website/src/content/docs/socket-api.mdx
+  s_bc40888563088b::t_f01d15466dc538 114,148-149,157-163,180-193,203-204,207,211-234,385,490-493,502-504,506-509,565,708-709,931-932
+docs/preview/website/src/content/docs/troubleshooting.mdx
+  s_bc40888563088b::t_b10b449e56b1b4 30,32,75
+docs/preview/website/src/content/docs/windows-beta.mdx
+  s_bc40888563088b::t_07f632ba806cee 6,8,10,29-30,44,52,57,59,67,71,78,97,104,107,110
+docs/preview/website/src/content/docs/zh-cn/agent-automation.mdx
+  s_bc40888563088b::t_8be9793af27c07 44,46,72,76
+docs/preview/website/src/content/docs/zh-cn/agents.mdx
+  s_bc40888563088b::t_9ce524edbcefab 23,107
+docs/preview/website/src/content/docs/zh-cn/cli-reference.mdx
+  s_bc40888563088b::t_f52fdd9206aad5 288,290,292,311,343,358
+docs/preview/website/src/content/docs/zh-cn/configuration.mdx
+  s_bc40888563088b::t_3c581be4b55ce9 53-64,113,120,152-160,261-263,272-273,280-325,441-442
+docs/preview/website/src/content/docs/zh-cn/integrations.mdx
+  s_bc40888563088b::t_c754e16e03a20c 3,28,50,63,65,67,69-96,180,244,264-277,288,302,330
+docs/preview/website/src/content/docs/zh-cn/marketplace.mdx
+  s_bc40888563088b::t_1d918dcd2eff2d 12-15,34-37,41-44
+docs/preview/website/src/content/docs/zh-cn/persistence-remote.mdx
+  s_bc40888563088b::t_b47ae5ab458ca0 66,68
+docs/preview/website/src/content/docs/zh-cn/plugins.mdx
+  s_bc40888563088b::t_a8c7c5ee926ba6 322-324,327-330
+docs/preview/website/src/content/docs/zh-cn/session-state.mdx
+  s_bc40888563088b::t_cbbf6528a4c3f8 79
+docs/preview/website/src/content/docs/zh-cn/socket-api.mdx
+  s_bc40888563088b::t_b07fe2aacee2b5 110,276
+docs/preview/website/src/content/docs/zh-cn/windows-beta.mdx
+  s_bc40888563088b::t_21060900761a8e 29-30,52,59,97,104,107,110
+docs/preview/website/src/data/config-reference.json
+  s_bc40888563088b::t_ffe98f54ddc487 15-32,73-90,424-435,568-591,727-732,767-791,802-811,1132-1142,1236
+justfile
+  s_bc40888563088b::t_dd9cc56c7be7e6 7,15-18,34,63,67-75,84,133-140,147-150,158,164
+scripts/config_reference_check.py
+  s_bc40888563088b::t_61f397440f038f 38-40,199
+scripts/test_config_reference_check.py
+  s_bc40888563088b::t_33c2a1eb1c28a8 35-36,68-80,147-150
+scripts/test_ui_hot_path_architecture.py
+  s_bc40888563088b::t_ebd110849b30ba 1-184
+scripts/windows_arm64_installer_test.ps1
+  s_bc40888563088b::t_a9650b078713ed 1-49
+scripts/windows_install_conpty_package_test.ps1
+  s_bc40888563088b::t_8e5a1af0aa442a 116-165,215-272
+src/agent_resume.rs
+  s_bc40888563088b::t_0d99121d8500a0 74-77,91,182-184,242,409-418,594-598,624-627,636-639
+src/api/mod.rs
+  s_bc40888563088b::t_2e95a1586e44bb 10-11
+src/api/schema/integrations.rs
+  s_bc40888563088b::t_5dc9510eb050ba 28,36,49
+src/api/schema/panes.rs
+  s_bc40888563088b::t_84539e54133155 7
+src/api/schema/response.rs
+  s_bc40888563088b::t_44a2b3a8e28bf0 180-181
+src/api/server.rs
+  s_bc40888563088b::t_ac122cf07155a3 59,62,64,71-86,105,108,114,150,152-161,167,290,344,347-348,359-376,378-379,1119,1127-1161,1172
+src/app/actions.rs
+  s_bc40888563088b::t_11d54487bef253 187,213,291,1103-1104,1125,1821,2844-2853,3024,3043-3051,3054,3057,3068-3069,3082-3083,3099,3130,3199,3212-3214,3222-3230,5347-5447
+src/app/agents.rs
+  s_bc40888563088b::t_e29268935d6369 9-12,248
+src/app/api.rs
+  s_acedf8f1924c26::t_ad92b99716bacc 67-71,109-115,122,131,140,147,156-166,197,202,207,218,233,378,980
+src/app/api/agents.rs
+  s_bc40888563088b::t_f18caae56cfcc8 82-91,111-120,421-499
+src/app/api/pane_graphics.rs
+  s_bc40888563088b::t_bf30ca5c468221 5-6,68,322-330,333,708-715,1055-1072,1180-1219
+src/app/git_refresh.rs
+  s_bc40888563088b::t_213695e58cce97 144,154,159,255-296,346-359
+src/app/input/mod.rs
+  s_bc40888563088b::t_f3f32db7c18478 395-398,569-577,607-612,913-924
+src/app/input/modal.rs
+  s_bc40888563088b::t_bb4c1e4798ca2c 244,247,2005-2028
+src/app/input/mouse.rs
+  s_bc40888563088b::t_62206347383fa3 104,194,228,502-510,592-599,677-679,692,699-702,705,711,714-719,722,733-738,741-743,747-750,754,839,854-857,867-872,879,913,926,1039,1462-1525,1622,1682,2012-2430,4173
+src/app/input/navigate.rs
+  s_bc40888563088b::t_dff01cf6a280cc 323-334,398-413,568-578,764-771,881,940,978-979,1401-1402,1420-1423,1548-1549,1570-1573,1751-1758,1813-1828,1897-1930,2019-2020,2690-2805,2819-2851,3546,3549,3659,3673,3676,3706
+src/app/input/sidebar.rs
+  s_bc40888563088b::t_1d57c39d312a1e 1203,1208,1275,1364,1500,1726
+src/app/input/terminal.rs
+  s_bc40888563088b::t_439f8f0b5faf9c 361,372,414-415,890-948
+src/app/mod.rs
+  s_acedf8f1924c26::t_3266be78b35ed9 11,26,30,144-150,152,154-155,609-610,625,658-659,741,779-784,789,805-808,942,947,1072-1085,1140,1457-1462,1502-1506,1547-1554,2386-2416,2990,3024
+src/app/runtime.rs
+  s_bc40888563088b::t_c7bce8b5c05de8 12,21,28-30,388,537-552,630,677-691,694
+src/app/tab_bar_status.rs
+  s_bc40888563088b::t_f874475a50d515 1-719
+src/app/terminal_titles.rs
+  s_bc40888563088b::t_44533344fe96ff 1-2,4-10,13,19-22,26-55,58,65-66,76,93,105,107-113,128-134,145,152,160-187,189,201-215
+src/app/theme_sync.rs
+  s_bc40888563088b::t_1b3e88534c12ff 16-18
+src/app/window_title.rs
+  s_bc40888563088b::t_3a5d670d1173ec 1-171
+src/cli.rs
+  s_bc40888563088b::t_41b778eef35cd3 32-40
+src/cli/agent.rs
+  s_bc40888563088b::t_19ac27a2dcd59d 6,9-11,363-367,369-418,426-431,582,601,620-638,643,647-702
+src/cli/integration.rs
+  s_bc40888563088b::t_8e26ae4902f49e 50-56,113,119,137,145,168,185
+src/client/direct_graphics.rs
+  s_bc40888563088b::t_880ca272194162 215,219-220,224-227,232-252,255,266-267,269-270,273-293,297-306,353,356-357,359,361-369,371
+src/client/input/windows_vti.rs
+  s_bc40888563088b::t_989895c478d503 686-688,1431,1434,1437
+src/client/mod.rs
+  s_bc40888563088b::t_5f4cdaded30b9d 424,438,587,611-613,619-620,665-667,673-686,1303,1345,1348,1352-1353,1357-1360,1746,1833-1836,2574-2576,3004-3007
+src/config.rs
+  s_bc40888563088b::t_bb8ec80083ea36 8,10,35,37,41-50,56-57,92-93,95,99-115
+src/config/io.rs
+  s_bc40888563088b::t_6933680a0940f1 13,296-303
+src/config/keybinds.rs
+  s_bc40888563088b::t_d58da3e3a24502 331-332,355-358,499-500,523-526,636-637,670-673,1440-1441
+src/config/model.rs
+  s_bc40888563088b::t_6625d28d5b7fad 8-9,318,397-400,446-453,529-532,577-584,639-640,663-666,743-744,767-770,890-896,942-950,1002,1053-1054,1077-1080,1122-1124,1213-1221,1390-1391,1402-1409,1419-1424,1839-1877
+src/config/sidebar.rs
+  s_bc40888563088b::t_0cf804733d23fd 624
+src/config/sound.rs
+  s_bc40888563088b::t_d80d429b66a8ad 46,143,183
+src/config/tab_bar.rs
+  s_bc40888563088b::t_c4b104e5bbf7d7 1-181
+src/config/theme.rs
+  s_bc40888563088b::t_442e3760811f72 106-107,269-270,279-280
+src/config/window_title.rs
+  s_bc40888563088b::t_02946844677fe6 1-205
+src/detect/manifest.rs
+  s_bc40888563088b::t_d98666f7cd526a 263
+src/detect/manifest/tests.rs
+  s_bc40888563088b::t_e6a2d2b54c9639 887-901,1027-1060
+src/detect/manifests/codex.toml
+  s_bc40888563088b::t_0b71b0500072ab 2-4,34-44
+src/detect/manifests/qwen.toml
+  s_bc40888563088b::t_f51fa582fb702d 1-119
+src/detect/mod.rs
+  s_bc40888563088b::t_8e1bb99ecef12c 67,72,93,97,116,143,176,213,310,354-366,631-633,793-794,820,864,894,935-955
+src/events.rs
+  s_bc40888563088b::t_2a734f0aaa19c2 59-64,157-162
+src/ghostty/mod.rs
+  s_bc40888563088b::t_d264727c15b309 3491-3527
+src/integration/actions.rs
+  s_bc40888563088b::t_cae6ce457273da 7,11,147-160,195-207,477-478,481,483,486-503,505,575-601
+src/integration/assets/antigravity_cli/herdr-agent-state.ps1
+  s_bc40888563088b::t_d292f13985b03d 5,36,54
+src/integration/assets/antigravity_cli/herdr-agent-state.sh
+  s_bc40888563088b::t_0763a4f45a7208 6
+src/integration/assets/claude/herdr-agent-state.ps1
+  s_bc40888563088b::t_ca53032c4d3463 5,27,48
+src/integration/assets/claude/herdr-agent-state.sh
+  s_bc40888563088b::t_ae2ca3a9e2972e 6
+src/integration/assets/codex/herdr-agent-state.ps1
+  s_bc40888563088b::t_9792791db3934e 5,28,46
+src/integration/assets/codex/herdr-agent-state.sh
+  s_bc40888563088b::t_2d14384746b546 6
+src/integration/assets/copilot/herdr-agent-state.ps1
+  s_bc40888563088b::t_fe125b90c8bee9 5,52-53
+src/integration/assets/copilot/herdr-agent-state.sh
+  s_bc40888563088b::t_df2b73ee6d0ae7 6
+src/integration/assets/droid/herdr-agent-state.ps1
+  s_bc40888563088b::t_91710f11e4520b 5,23,25
+src/integration/assets/droid/herdr-agent-state.sh
+  s_bc40888563088b::t_fa165b059bcf62 6
+src/integration/assets/kimi/herdr-agent-state.ps1
+  s_bc40888563088b::t_c79d11bb7662e8 5,22,27,30,32
+src/integration/assets/kimi/herdr-agent-state.sh
+  s_bc40888563088b::t_bb52ce85c7309d 4
+src/integration/assets/opencode/herdr-agent-state.js
+  s_bc40888563088b::t_33dd5ee38db346 5,105,109,156-158
+src/integration/assets/opencode/herdr-agent-state.test.ts
+  s_bc40888563088b::t_610aa9f30bfb22 117-147
+src/integration/assets/opencode/herdr-tui-session.js
+  s_bc40888563088b::t_eab008d144f702 1-113
+src/integration/assets/opencode/herdr-tui-session.test.ts
+  s_bc40888563088b::t_c99d16ef336cb5 1-181
+src/integration/assets/qodercli/herdr-agent-state.ps1
+  s_bc40888563088b::t_f68ac0dbf62145 5,23,25
+src/integration/assets/qodercli/herdr-agent-state.sh
+  s_bc40888563088b::t_2ed9c31e800095 4,26-27
+src/integration/assets/qwen/herdr-agent-session.ps1
+  s_bc40888563088b::t_655e4fb40b941d 1-37
+src/integration/assets/qwen/herdr-agent-session.sh
+  s_bc40888563088b::t_0caed3e584f778 1-48
+src/integration/env.rs
+  s_bc40888563088b::t_b753c16336cc3f 19,161-164
+src/integration/mod.rs
+  s_bc40888563088b::t_d8ba5294ee1d5d 7,41,52,63,105,155,170-173,193,195-206,242
+src/integration/opencode_config.rs
+  s_bc40888563088b::t_1fe3ed18a63cb1 1-298
+src/integration/registry.rs
+  s_bc40888563088b::t_90a1e1e066ac05 23,53,80,270,335-339,416-431,466-471
+src/integration/targets.rs
+  s_bc40888563088b::t_2d93e2cf8ed75f 23,28-30,40,56-59,460,466-468,470-474,817-840,844-845,847-848,950-1002,1105-1144
+src/integration/tests.rs
+  s_bc40888563088b::t_158cd1f55e403f 104,199,1063,1093,1226,2206,2222-2237,2244,2248-2277,2280,2285-2286,2288-2341,2729-2733,3191-3292
+src/integration/types.rs
+  s_bc40888563088b::t_dac1c6e9dadf58 45-46,72-77,128-135,244-245,247-248
+src/kitty_graphics.rs
+  s_bc40888563088b::t_3788c6e0884ab6 1183-1184,1190-1229
+src/main.rs
+  s_bc40888563088b::t_87c29d5ea6e779 133-134,201-202,220-223,255-260,345-358,461-462,726-727
+src/pane.rs
+  s_bc40888563088b::t_d6389568f8fe44 57-71,223-244,467-483,857,859-860,865,1064,1499-1500,1512,1941,1949,1957,1961,1964-1967,2029,2085,2119,2126,2130,2135-2138,2208-2209,2282-2319,2325,2397,2400-2401,2406,2584,2632-2635,2718-2719,2723-2726,3045,3048,3088,3379-3383,3647,3679,3890-3952
+src/pane/osc.rs
+  s_bc40888563088b::t_900775b0b902da 467,474,482-485,494
+src/pane/terminal.rs
+  s_bc40888563088b::t_5aa3f933f072bf 149,392-395,1201,1234,1336,1671-1678,1958,3779-3805
+src/platform/fallback.rs
+  s_bc40888563088b::t_54a3eee71b3b8c 92-119,205
+src/platform/linux.rs
+  s_bc40888563088b::t_a876e48a240610 16-19,44-47,469,475-476
+src/platform/macos.rs
+  s_bc40888563088b::t_eb10e70a1d03b0 16-19,29-32,525,531-532
+src/platform/mod.rs
+  s_bc40888563088b::t_da555056b3031c 42-46
+src/platform/unix_common.rs
+  s_bc40888563088b::t_306648a88c9908 122-211
+src/platform/windows.rs
+  s_bc40888563088b::t_635a0da476617c 6,37-39,43-46,54-58,85-87,89-93,257-340,358-359,365-400,402-409,414-421,427-428,434-442,445-446,451-465,573-712,969,973-974,979,981,985,992,1000,1011-1022,1026-1047,1064-1065,1073,1095,1104-1107,1111-1112,1124,1132,1137,1141,1156,1161-1163,1171-1173,1184,1188-1190,1214,1228-1391,1413-1440,1799-1800,1803-1804,1810,1892,1906,3055-3086,3289-3489,3635-3640,3646,3649,3652-3653,3683-3684,3698-3699,3756-3796,3801
+src/protocol/render_ansi.rs
+  s_bc40888563088b::t_d8b03663bb1e7f 636,640,651,655-656,658-660,662,664-667
+src/render_signal.rs
+  s_bc40888563088b::t_4db9fc954b4fe7 11,40-43,49-94,119,124,128-154,161
+src/server/alt_screen_read.rs
+  s_bc40888563088b::t_d65be0007c2391 11-13,20,23-24,40-43,46,62,76-81,84,92,127-129,132,140-143,145-199,201-206,214-215,219-223,225-236,240-244,247,250,252,256-266,269,277-281,285,291-298,303,305,308,310,312,314-318,322-325,327,329,333-334,336,338,340-345,351-356,362-363,367-372,376,387,389,393-401,468-996
+src/server/client_accept.rs
+  s_bc40888563088b::t_29bd2790554625 2,19-21
+src/server/client_transport.rs
+  s_bc40888563088b::t_4212294988fce8 525-528,631-634,664-668,670,681-686,692-705
+src/server/handoff.rs
+  s_bc40888563088b::t_189333176c619b 42-46,312,322,474-524
+src/server/headless/pane_graphics.rs
+  s_bc40888563088b::t_d307ba29fc9c75 90-100,202-204,365-367
+src/server/headless/tests/pane_graphics.rs
+  s_bc40888563088b::t_a6609798335a11 164-227,731-976,984-995,1017-1021,1023,1160-1175
+src/server/render_stream.rs
+  s_bc40888563088b::t_1aef3e19b8aee4 470-639
+src/sound.rs
+  s_bc40888563088b::t_a65a2f300f1753 453
+src/terminal/runtime.rs
+  s_bc40888563088b::t_c08e03b2490163 314-318,323-327,471-491,549-552
+src/terminal/state.rs
+  s_acedf8f1924c26::t_87275a61fd0b75 68,160,196,201-232,1015,1026-1038,1463,1470-1474,1482,1486-1495,1540-1581,1646,2065-2070,2103,2114-2123,2130-2136,2142,2212,2353,2363,2368,2371-2384,2389,2391,4796-4862,4869-5013,5016-5030,5032,5036-5065,5068-5076,5078-5117,5122-5123,5125-5127,5172,5178-5179,5204-5205,5207,5464-5465,5467,5915-5916,5925,5936
+src/terminal/title.rs
+  s_bc40888563088b::t_a737a827abb6dc 1,4,31-41,74-87
+src/terminal_effects.rs
+  s_bc40888563088b::t_acbebab2212bf3 15-24,37-47
+src/terminal_theme.rs
+  s_bc40888563088b::t_e822c306c9e700 82,86-89,223,228-232
+src/ui.rs
+  s_bc40888563088b::t_6912bed226ca81 99,270,1075
+src/ui/dialogs.rs
+  s_bc40888563088b::t_9ae7b4bbba6c55 43-77,109,297,789,792-797,799-801,972-1157
+src/ui/keybind_help.rs
+  s_bc40888563088b::t_837e4d627314ae 134-135,150-153
+src/ui/panes.rs
+  s_bc40888563088b::t_3d87c3d9f36807 34-35,37
+src/ui/sidebar.rs
+  s_bc40888563088b::t_e3acc4c814257d 802,804,809,811,860,875,1268,1272,1524,1714,1721,1782,1792-1820,1857,1862,2303,2335,2814
+src/ui/tab_surface.rs
+  s_bc40888563088b::t_bf414a406f59fc 307
+src/ui/tabs.rs
+  s_112ed4386e9db2::t_f33b40d876c433 15-19,47-110,410-417,459-460,464,472-501,549-721
+src/update.rs
+  s_bc40888563088b::t_03ffc898e2bd5d 127-128,141-142,152-155,162-163,173-196,311-312,420-421,507-508,678-724,727-728,730-733,736-739,741-746,2135-2138
+src/workspace.rs
+  s_bc40888563088b::t_68d27999debb41 88-94,100
+src/workspace/git/config.rs
+  s_112ed4386e9db2::t_3c3a17bc094059 1-2,4,16-71,74,78-79,81,89-96,106-114,125,128-132,148-149,205,207,212,245,257,273,275,280,317,331,344,353,491,493,498,528,545
+src/workspace/git/config_tests.rs
+  s_bc40888563088b::t_d5859106e5336f 8-42,112-114,137-139,517-519,555-557,598-600
+src/workspace/git/discovery.rs
+  s_bc40888563088b::t_d9181abec42dd5 78,81-85,101-106,429-430,440-488
+src/workspace/git/status.rs
+  s_bc40888563088b::t_9b01e795157bb0 7,44-60,113-118,134-135,138,141-149,151-156,160,212,215-216,218-221,227,253-254,293-301,303-304,306,434-446,463,553-575
+src/workspace/git/test_support.rs
+  s_bc40888563088b::t_da15b5210b8f10 53
+tests/api_ping.rs
+  s_bc40888563088b::t_4548469b24c599 505
+tests/cli/agent_transport.rs
+  s_bc40888563088b::t_955f1597427816 4,11-28,76-101,110-209,211-213
+tests/cli/agents.rs
+  s_bc40888563088b::t_00a7a54c3ed24b 3-180,256,329-383,495,546-562
+tests/cli/surface.rs
+  s_bc40888563088b::t_9ab37a192dc288 276-302
+tests/detach_reattach.rs
+  s_bc40888563088b::t_1b9493c60d7dff 22-34,86-100,105,110,127,667-775
+website/README.md
+  s_bc40888563088b::t_647daae65d5d2d 18
+website/_headers
+  s_bc40888563088b::t_16850167fd2f98 24-35
+website/agent-detection/claude.toml
+  s_acedf8f1924c26::t_693aea4c3a11e6 2-4,7-13,20-21
+website/agent-detection/codex.toml
+  s_bc40888563088b::t_5f1c1c0c7009cc 2-4,34-44
+website/agent-detection/index.toml
+  s_bc40888563088b::t_f8e1f48d1055b4 75-78
+website/agent-detection/qwen.toml
+  s_bc40888563088b::t_7352a0c8ec1ec0 1-119
+website/astro.config.mjs
+  s_bc40888563088b::t_2045a02424f03e 4,96-110
+website/bun.lock
+  s_bc40888563088b::t_6aba34a295869d 11,246-247,262-263,316-317,436-437,482-483,524-525,658-659,744-745,752-753,800-801,822-823,826-827,860-861,904,918-919,924-925,932-933
+website/index.html
+  s_bc40888563088b::t_8f39de0bc766a5 93,453-454,456,458,464
+website/install.ps1
+  s_bc40888563088b::t_c3be6192caab5d 7-11,27-41,375-408,604,645-658,673-677,679-682,705
+website/package.json
+  s_bc40888563088b::t_4d0a1f88ef5d51 7-8,10-11,17-18
+website/preview.json
+  s_bc40888563088b::t_f784105b465c45 5-9,12-13,16-17,20-21,24-25,28-29,34-63
+website/scripts/check-built-docs.mjs
+  s_bc40888563088b::t_be122ba7b8b74f 74-147
+website/scripts/docs-versions.integration.test.ts
+  s_bc40888563088b::t_8a25515b0ab2a4 158-160
+website/scripts/patch-starlight-llms.mjs
+  s_bc40888563088b::t_1b7c92215223de 1-54
+website/scripts/prepare-docs.mjs
+  s_bc40888563088b::t_e142f66491ccde 56-61,93,202-337
+website/src/components/SiteLayout.astro
+  s_bc40888563088b::t_22758372584484 98
+website/src/content/blog/coding-agents-are-becoming-runtimes.md
+  s_b5805a6688f699::t_5416fe641a54d2 8,10,16,50,54,56,58,60,64,99,109,142,146,148,164
+website/src/content/blog/herdr-0-6-3.md
+  s_bc40888563088b::t_41c809acdaa4ae 10,12,65
+website/src/content/blog/herdr-is-joining-y-combinator.md
+  s_bc40888563088b::t_8499cedf3a22a4 20,26,30,32,42,44,48
+website/src/content/blog/live-updates-without-killing-your-terminal-processes.md
+  s_bc40888563088b::t_22a883c7698c0f 19,37,99,125
+website/src/content/blog/ten-agents-three-clients-95-percent-less-cpu.md
+  s_bc40888563088b::t_5345cce68234b4 9,11,13
+README.md
+  s_bc40888563088b::t_4e12ebe0fea913 31,33-34,63
+docs/next/README.md
+  s_bc40888563088b::t_e96dff4d65cbd5 31,33-34,63
+docs/next/website/src/content/docs/agent-automation.mdx
+  s_bc40888563088b::t_b6b358f897237a 6,44,46,72,76
+docs/next/website/src/content/docs/cli-reference.mdx
+  s_bc40888563088b::t_bea7747d052209 8,133,146,159,258,308,310,312,344,375,391,423,431,469
+docs/next/website/src/content/docs/zh-cn/agent-automation.mdx
+  s_bc40888563088b::t_1d098df654d34e 44,46,72,76
+src/app/state.rs
+  s_bc40888563088b::t_d2f8612bb804c1 76-79,117-118,142-143,167-168,192-193,217-218,242-243,267-268,292-293,317-318,342-343,367-368,392-393,417-418,442-443,467-468,492-493,517-518,542-543,589-590,592-593,595-596,598-599,601-602,604-605,607-608,610-611,613-614,616-617,619-620,622-623,625-626,628-629,631-632,634-635,637-644,1139,1144,1369-1374,1434-1436,1455-1456,1493-1494,1647,1813-1814,1829-1832,1865-1866,2014,2018,2185,2196,2215,2218,2275-2282,2396-2422,2433-2480,2494,2497-2498,2501,2503-2505
+src/cli/spec.rs
+  s_bc40888563088b::t_152c093137bf89 46,49-50,55-59,62,362,1314-1330
+src/detect/manifests/claude.toml
+  s_bc40888563088b::t_6c3f8ba6c9c55a 2,4,20
+tests/client_mode.rs
+  s_bc40888563088b::t_0f85e779504821 3-4,116-155,157-171,176,178,181,702-719,758-957,1030-1032,1043-1185
+website/agent-guide.md
+  s_bc40888563088b::t_a49d2c56df1839 3,5,42,46,51-52,54,59,62,68,70,74,82,84-85
+website/css/site.css
+  s_bc40888563088b::t_e1795f062c45a2 4-5,26-27,31,49-50,64,145,179,215,244,255-256,289-291,293-297,311,319-320,384-385,396,443,491,570,690-691,701,770,788-789
+website/src/pages/plugins.astro
+  s_bc40888563088b::t_0fb4b5846f8ce6 61-83,86-116,148-151,157-172,213-315,323,334-337,340,420-425,427-435,443-473,514-523,533,581-587,603-611,667,672,755,762-946,948-953
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "6e9e6f3335001f3ecccdc185e4cb20b36df4402b",
+  "prompts": {},
+  "sessions": {
+    "s_112ed4386e9db2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a26478fd-0738-4b49-bd06-0d99c6502769",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    },
+    "s_acedf8f1924c26": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0135e-cf93-7c60-b6e4-be6f2187527f",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    },
+    "s_b5805a6688f699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0133b-4350-7993-9dbd-62a09d5a38f1",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    },
+    "s_bc40888563088b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0136b-00e2-7d50-baf0-2192da89f9e5",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}
