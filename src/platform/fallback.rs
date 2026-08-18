@@ -89,6 +89,34 @@ pub(crate) fn should_draw_host_cursor_by_default() -> bool {
     false
 }
 
+pub(crate) fn should_query_host_terminal_palette() -> bool {
+    false
+}
+
+pub(crate) fn hostname() -> Option<String> {
+    None
+}
+
+pub(crate) fn local_datetime() -> Option<time::PrimitiveDateTime> {
+    None
+}
+
+pub(crate) fn status_commands_supported() -> bool {
+    false
+}
+
+pub(crate) fn configure_status_command(_process: &mut std::process::Command) {}
+
+pub(crate) struct StatusCommandGuard;
+
+impl StatusCommandGuard {
+    pub(crate) fn new(_child: &tokio::process::Child) -> std::io::Result<Self> {
+        Ok(Self)
+    }
+
+    pub(crate) fn terminate(&mut self) {}
+}
+
 fn raw_command_argv(command: &str, flag: &str) -> Vec<std::ffi::OsString> {
     vec!["/bin/sh".into(), flag.into(), command.into()]
 }
@@ -174,7 +202,7 @@ pub fn read_clipboard_text() -> Option<String> {
 }
 
 /// Unsupported platform stub.
-pub fn open_url(_url: &str) -> std::io::Result<()> {
+pub fn open_url(_url: &str) -> std::io::Result<Option<std::process::Child>> {
     Err(std::io::Error::new(
         std::io::ErrorKind::Unsupported,
         "opening URLs is not supported on this platform",
