@@ -1,0 +1,50 @@
+docs/next/api/herdr-api.schema.json
+  s_feba250aaff581::t_de2cd0ebd61df2 2806
+src/app/actions.rs
+  s_feba250aaff581::t_7a9187218ffb48 2940-2950
+  s_feba250aaff581::t_7748ff54f8a989 2804
+  s_feba250aaff581::t_1bd9d9cc340966 14-17,2789-2803,2805-2824
+  s_feba250aaff581::t_cd86c13023a531 2825-2826
+src/terminal/state.rs
+  s_feba250aaff581::t_cddd52a594c87f 779,787-790,801,822,824-826,833-835,847-851,854-858,863-865,872-878,884,891-902,907-923,925-927,933-937,971-972
+  s_feba250aaff581::t_8932a0d1714765 859-861,866-871,879-883,903-905,938-940,946,6067-6070,6102-6104,6137-6139
+  s_feba250aaff581::t_7748ff54f8a989 108,124,988,1001
+  s_feba250aaff581::t_2a673edd1635e4 1878-1888
+  s_feba250aaff581::t_fac6d0aea73ecf 973,1980-1990,1995-1998,2007
+  s_feba250aaff581::t_28f30de170eb04 106-107,109-121,123,125-129,131-136,142-158
+  s_feba250aaff581::t_418213ce9dec9d 122,130,137-141
+  s_feba250aaff581::t_d2111171e0157b 5977,6083-6101,6105-6136,6140-6153
+  s_feba250aaff581::t_b300526c7bd15c 5978-6066,6071-6082
+src/api/schema/panes.rs
+  s_feba250aaff581::t_270bc3cea6d8fd 367
+  s_feba250aaff581::t_866b4a214d0524 368
+src/terminal/mod.rs
+  s_feba250aaff581::t_4aabd2e8249b5d 13-14
+tests/api_ping.rs
+  s_feba250aaff581::t_8932a0d1714765 1699,1751,1770
+  s_feba250aaff581::t_6c8ce64c224821 221-277,1678-1698,1700-1750,1752-1769,1771-1824
+  s_feba250aaff581::t_7591b27ed1a1c4 1825
+src/app/api/panes.rs
+  s_feba250aaff581::t_8d1e9cc57f9f43 1242,1259-1260,1262-1279
+  s_feba250aaff581::t_8932a0d1714765 1243-1245,1247-1251,1257-1258
+  s_feba250aaff581::t_6d42aba7ab3249 1246,1252-1256
+src/app/api.rs
+  s_feba250aaff581::t_b83ffe94a47f5e 114,116-127
+  s_feba250aaff581::t_6ada33da479b04 112-113,115,128-157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "b51c9a65a57c2d45ae1ce6d445951b31855031d6",
+  "prompts": {},
+  "sessions": {
+    "s_feba250aaff581": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a015ee-fd81-77f2-ae2d-c5a425b2d501",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
