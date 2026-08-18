@@ -60,6 +60,7 @@
 - Chinese IME commits now reach panes on macOS when the focused application requests printable key-release events. (#2924)
 - Windows now recognizes `Ctrl+1` through `Ctrl+9` keybindings instead of decoding those key records as control characters. (#2910)
 - PowerShell panes now keep their process-reported working directory synchronized with the shell's logical location. (#2879, thanks @Pimpmuckl)
+- Custom hook state sources can temporarily own pane state while preserving reserved native agent sessions during authority clears or detection changes.
 - Foreground typing no longer waits behind render cadence consumed by output from panes in hidden tabs. (#2890)
 - The Windows ARM64 installer now waits for x64 emulation to release the verified executable before activating the downloaded release. (#2916)
 - On Unix, Ctrl-click URL openers are now reaped after they exit, preventing defunct child processes from accumulating on long-running servers. (#2903)
