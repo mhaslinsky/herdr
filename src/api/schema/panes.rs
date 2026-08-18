@@ -364,6 +364,8 @@ pub struct PaneGraphicsStreamParams {
     pub owner: String,
 }
 
+/// Requests with these parameters receive `authority_conflict` for an ownership conflict or
+/// `stale_sequence` for a rejected source sequence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PaneReportAgentParams {
     pub pane_id: String,
