@@ -2800,6 +2800,7 @@
           "type": "object"
         },
         "PaneReportAgentParams": {
+          "description": "Requests with these parameters receive `authority_conflict` for an ownership conflict or\n`stale_sequence` for a rejected source sequence.",
           "properties": {
             "agent": {
               "type": "string"

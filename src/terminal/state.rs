@@ -101,6 +101,59 @@ pub struct TerminalStateMutation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HookAuthorityDisposition {
+    Applied(Box<TerminalStateMutation>),
+    Rejected(HookAuthorityRejection),
+    Silent(HookAuthoritySilentDisposition),
+}
+
+impl HookAuthorityDisposition {
+    pub fn mutation(&self) -> Option<&TerminalStateMutation> {
+        match self {
+            Self::Applied(mutation) => Some(mutation),
+            Self::Rejected(_) | Self::Silent(_) => None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn expect(self, message: &str) -> TerminalStateMutation {
+        match self {
+            Self::Applied(mutation) => *mutation,
+            disposition => panic!("{message}: {disposition:?}"),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn unwrap(self) -> TerminalStateMutation {
+        self.expect("hook authority report was not applied")
+    }
+
+    #[cfg(test)]
+    fn is_none(&self) -> bool {
+        !matches!(self, Self::Applied(_))
+    }
+
+    #[cfg(test)]
+    fn is_some(&self) -> bool {
+        matches!(self, Self::Applied(_))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HookAuthorityRejection {
+    AuthorityConflict { current_owner_source: String },
+    StaleSequence,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HookAuthoritySilentDisposition {
+    IdentityOnlyRouting,
+    RecentProcessExit,
+    FullLifecycleRoute,
+    ReservedNativeStateSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct AgentNameOwner {
     agent_label: String,
     session_ref: Option<crate::agent_resume::AgentSessionRef>,
@@ -598,7 +651,7 @@ impl TerminalState {
         message: Option<String>,
         seq: Option<u64>,
     ) -> Option<EffectiveStateChange> {
-        self.set_hook_authority_at(
+        match self.set_hook_authority_at(
             source,
             agent_label,
             state,
@@ -606,8 +659,10 @@ impl TerminalState {
             None,
             seq,
             Instant::now(),
-        )
-        .and_then(|mutation| mutation.effective_state_change)
+        ) {
+            HookAuthorityDisposition::Applied(mutation) => mutation.effective_state_change,
+            HookAuthorityDisposition::Rejected(_) | HookAuthorityDisposition::Silent(_) => None,
+        }
     }
 
     pub fn set_hook_authority_with_session_ref(
@@ -618,7 +673,7 @@ impl TerminalState {
         message: Option<String>,
         session_ref: Option<crate::agent_resume::AgentSessionRef>,
         seq: Option<u64>,
-    ) -> Option<TerminalStateMutation> {
+    ) -> HookAuthorityDisposition {
         self.set_hook_authority_at(
             source,
             agent_label,
@@ -639,16 +694,20 @@ impl TerminalState {
         session_ref: Option<crate::agent_resume::AgentSessionRef>,
         seq: Option<u64>,
         now: Instant,
-    ) -> Option<TerminalStateMutation> {
+    ) -> HookAuthorityDisposition {
         if crate::detect::session_identity_only_integration(&source, &agent_label) {
-            return None;
+            return HookAuthorityDisposition::Silent(
+                HookAuthoritySilentDisposition::IdentityOnlyRouting,
+            );
         }
         if !crate::detect::full_lifecycle_hook_authority(&source, &agent_label)
             && self.recent_agent_process_exit.is_some_and(|exit| {
                 crate::detect::parse_agent_label(&agent_label) == Some(exit.agent)
             })
         {
-            return None;
+            return HookAuthorityDisposition::Silent(
+                HookAuthoritySilentDisposition::RecentProcessExit,
+            );
         }
         let reanchor_sequence = match self.route_full_lifecycle_hook_report(
             &source,
@@ -660,45 +719,106 @@ impl TerminalState {
             now,
         ) {
             FullLifecycleHookReportRoute::Accept { reanchor_sequence } => reanchor_sequence,
-            FullLifecycleHookReportRoute::Ignore => return None,
+            FullLifecycleHookReportRoute::Ignore => {
+                return HookAuthorityDisposition::Silent(
+                    HookAuthoritySilentDisposition::FullLifecycleRoute,
+                )
+            }
         };
         if self.known_agent_label_conflicts_with_detected_agent(&agent_label) {
-            return None;
+            let current_owner_source = self
+                .detected_agent
+                .map(crate::detect::agent_label)
+                .map(|detected_agent| format!("detection:{detected_agent}"))
+                .unwrap_or_else(|| "detection".to_string());
+            return HookAuthorityDisposition::Rejected(HookAuthorityRejection::AuthorityConflict {
+                current_owner_source,
+            });
         }
-        let owner_conflicts = self.current_session_owner_conflicts(&source, &agent_label);
+        let current_session_owner = self
+            .current_session_identity_for_persistence()
+            .map(|(current_source, current_agent, _, _)| (current_source, current_agent));
+        let owner_conflicts =
+            current_session_owner
+                .as_ref()
+                .is_some_and(|(current_source, current_agent)| {
+                    current_source != &source || current_agent != &agent_label
+                });
+        let reserved_owner_takeover_allowed = owner_conflicts
+            && current_session_owner
+                .as_ref()
+                .is_some_and(|(current_source, current_agent)| {
+                    crate::agent_resume::is_reserved_native_state_source(
+                        current_source,
+                        current_agent,
+                    ) && self
+                        .hook_authority
+                        .as_ref()
+                        .is_none_or(|authority| authority.source == source)
+                        && Self::normalized_agent_labels_match(&agent_label, current_agent)
+                });
         let foreground_takeover_allowed = owner_conflicts
             && self.foreground_agent_confirms_hook_authority_takeover(
                 &source,
                 &agent_label,
                 &session_ref,
             );
-        if owner_conflicts && !foreground_takeover_allowed {
-            return None;
+        if owner_conflicts && !reserved_owner_takeover_allowed && !foreground_takeover_allowed {
+            let current_owner_source = self
+                .hook_authority
+                .as_ref()
+                .filter(|authority| authority.source != source)
+                .map(|authority| authority.source.clone())
+                .or_else(|| {
+                    current_session_owner
+                        .as_ref()
+                        .map(|(current_source, _)| current_source.clone())
+                })
+                .unwrap_or_else(|| "unknown".to_string());
+            return HookAuthorityDisposition::Rejected(HookAuthorityRejection::AuthorityConflict {
+                current_owner_source,
+            });
         }
-        let session_ref = session_ref.map(|session_ref| {
-            if self.lifecycle_hook_report_replaces_persisted_session(
-                &source,
-                &agent_label,
-                &session_ref,
-            ) {
-                session_ref
-            } else {
-                self.conflicting_same_owner_session_ref(&source, &agent_label, &session_ref, None)
+        let session_ref = if reserved_owner_takeover_allowed {
+            None
+        } else {
+            session_ref.map(|session_ref| {
+                if self.lifecycle_hook_report_replaces_persisted_session(
+                    &source,
+                    &agent_label,
+                    &session_ref,
+                ) {
+                    session_ref
+                } else {
+                    self.conflicting_same_owner_session_ref(
+                        &source,
+                        &agent_label,
+                        &session_ref,
+                        None,
+                    )
                     .unwrap_or(session_ref)
-            }
-        });
+                }
+            })
+        };
         if self.live_full_lifecycle_hook_authority_conflicts_with_session(
             &source,
             &agent_label,
             &session_ref,
         ) {
-            return None;
+            let current_owner_source = self
+                .hook_authority
+                .as_ref()
+                .map(|authority| authority.source.clone())
+                .unwrap_or_else(|| source.clone());
+            return HookAuthorityDisposition::Rejected(HookAuthorityRejection::AuthorityConflict {
+                current_owner_source,
+            });
         }
         if reanchor_sequence {
             self.hook_report_sequences.remove(&source);
         }
         if !self.accept_hook_report(&source, seq) {
-            return None;
+            return HookAuthorityDisposition::Rejected(HookAuthorityRejection::StaleSequence);
         }
 
         let previous_agent_label = self.effective_agent_label().map(str::to_string);
@@ -723,7 +843,9 @@ impl TerminalState {
                 }
             }
         }
-        self.persisted_agent_session = None;
+        if !reserved_owner_takeover_allowed {
+            self.persisted_agent_session = None;
+        }
         self.hook_authority = Some(HookAuthority {
             source,
             agent_label,
@@ -733,7 +855,7 @@ impl TerminalState {
             session_ref,
         });
         let current_session = self.current_session_identity_for_persistence();
-        Some(TerminalStateMutation {
+        HookAuthorityDisposition::Applied(Box::new(TerminalStateMutation {
             effective_state_change: self.recompute_effective_state(
                 previous_agent_label,
                 previous_known_agent,
@@ -743,7 +865,7 @@ impl TerminalState {
             ),
             session_ref_changed: previous_session != current_session,
             agent_released: false,
-        })
+        }))
     }
 
     fn hook_authority_not_newer_than(&self, observed_at: Instant) -> bool {
@@ -1614,6 +1736,17 @@ impl TerminalState {
             .is_some_and(|hook_agent| hook_agent != detected_agent)
     }
 
+    fn normalized_agent_labels_match(reporter: &str, owner: &str) -> bool {
+        match (
+            crate::detect::parse_agent_label(reporter),
+            crate::detect::parse_agent_label(owner),
+        ) {
+            (Some(reporter_agent), Some(owner_agent)) => reporter_agent == owner_agent,
+            (None, None) => reporter.trim() == owner.trim(),
+            (Some(_), None) | (None, Some(_)) => false,
+        }
+    }
+
     fn foreground_agent_confirms_different_owner_takeover(
         &self,
         source: &str,
@@ -1705,11 +1838,25 @@ impl TerminalState {
         let previous_state = self.state;
         let previous_presentation = self.effective_presentation_for_state_at(previous_state, now);
         let previous_session = self.current_session_identity_for_persistence();
+        let preserve_foreign_reserved_persisted_session = self
+            .persisted_agent_session
+            .as_ref()
+            .is_some_and(|session| {
+                crate::agent_resume::is_reserved_native_state_source(
+                    &session.source,
+                    &session.agent,
+                ) && sequence_source
+                    .as_deref()
+                    .is_some_and(|clearing_source| clearing_source != session.source)
+            });
         self.suppress_current_full_lifecycle_hook_authority(
             FullLifecycleHookSuppressionReason::HookClear,
         );
         self.hook_authority = None;
-        self.persisted_agent_session = None;
+        if !preserve_foreign_reserved_persisted_session {
+            self.persisted_agent_session = None;
+        }
+        let current_session = self.current_session_identity_for_persistence();
         Some(TerminalStateMutation {
             effective_state_change: self.recompute_effective_state(
                 previous_agent_label,
@@ -1718,7 +1865,7 @@ impl TerminalState {
                 previous_presentation,
                 now,
             ),
-            session_ref_changed: previous_session.is_some(),
+            session_ref_changed: previous_session != current_session,
             agent_released: false,
         })
     }
@@ -5589,6 +5736,183 @@ mod tests {
             )),
             Some(("herdr:claude", "claude", "claude-session"))
         );
+    }
+
+    #[test]
+    fn reserved_persist_survives_custom_hook_authority_takeover() {
+        let mut terminal = test_terminal();
+        terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
+            source: "herdr:claude".into(),
+            agent: "claude".into(),
+            session_ref: crate::agent_resume::AgentSessionRef::id("claude-session").unwrap(),
+        });
+
+        terminal
+            .set_hook_authority_with_session_ref(
+                "cairn:claude-state".into(),
+                "claude".into(),
+                AgentState::Working,
+                None,
+                None,
+                Some(20),
+            )
+            .expect("matching custom state source should take hook authority");
+
+        assert_eq!(
+            terminal.persisted_agent_session.as_ref().map(|session| (
+                session.source.as_str(),
+                session.agent.as_str(),
+                session.session_ref.value.as_str()
+            )),
+            Some(("herdr:claude", "claude", "claude-session"))
+        );
+        assert_eq!(
+            terminal
+                .hook_authority
+                .as_ref()
+                .map(|authority| authority.source.as_str()),
+            Some("cairn:claude-state")
+        );
+    }
+
+    #[test]
+    fn custom_hook_clear_preserves_foreign_reserved_persist() {
+        let mut terminal = test_terminal();
+        terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
+            source: "herdr:claude".into(),
+            agent: "claude".into(),
+            session_ref: crate::agent_resume::AgentSessionRef::id("claude-session").unwrap(),
+        });
+        terminal
+            .set_hook_authority_with_session_ref(
+                "cairn:claude-state".into(),
+                "claude".into(),
+                AgentState::Working,
+                None,
+                None,
+                Some(20),
+            )
+            .expect("matching custom state source should take hook authority");
+
+        terminal
+            .clear_hook_authority_with_mutation(Some("cairn:claude-state"), Some(21))
+            .expect("custom hook clear should be accepted");
+
+        assert_eq!(
+            terminal.persisted_agent_session.as_ref().map(|session| (
+                session.source.as_str(),
+                session.agent.as_str(),
+                session.session_ref.value.as_str()
+            )),
+            Some(("herdr:claude", "claude", "claude-session"))
+        );
+    }
+
+    #[test]
+    fn custom_takeover_session_ref_does_not_shadow_reserved_identity() {
+        let mut terminal = test_terminal();
+        terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
+            source: "herdr:claude".into(),
+            agent: "claude".into(),
+            session_ref: crate::agent_resume::AgentSessionRef::id("claude-session").unwrap(),
+        });
+
+        terminal
+            .set_hook_authority_with_session_ref(
+                "cairn:claude-state".into(),
+                "claude".into(),
+                AgentState::Working,
+                None,
+                crate::agent_resume::AgentSessionRef::id("custom-session"),
+                Some(20),
+            )
+            .expect("matching custom state source should take hook authority");
+
+        assert!(terminal
+            .hook_authority
+            .as_ref()
+            .is_some_and(|authority| authority.session_ref.is_none()));
+        assert_eq!(
+            terminal.current_session_identity_for_persistence(),
+            Some((
+                "herdr:claude".into(),
+                "claude".into(),
+                crate::agent_resume::AgentSessionRefKind::Id,
+                "claude-session".into(),
+            ))
+        );
+    }
+
+    #[test]
+    fn reserved_owner_rejects_custom_report_with_wrong_agent_label() {
+        let mut terminal = test_terminal();
+        terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
+            source: "herdr:claude".into(),
+            agent: "claude".into(),
+            session_ref: crate::agent_resume::AgentSessionRef::id("claude-session").unwrap(),
+        });
+
+        let disposition = terminal.set_hook_authority_with_session_ref(
+            "cairn:claude-state".into(),
+            "codex".into(),
+            AgentState::Working,
+            None,
+            None,
+            Some(20),
+        );
+
+        assert_eq!(
+            disposition,
+            HookAuthorityDisposition::Rejected(HookAuthorityRejection::AuthorityConflict {
+                current_owner_source: "herdr:claude".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn reserved_owner_custom_authority_has_exclusive_source_hold() {
+        let mut terminal = test_terminal();
+        terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
+            source: "herdr:claude".into(),
+            agent: "claude".into(),
+            session_ref: crate::agent_resume::AgentSessionRef::id("claude-session").unwrap(),
+        });
+
+        let first = terminal.set_hook_authority_with_session_ref(
+            "cairn:claude-state".into(),
+            "claude".into(),
+            AgentState::Working,
+            None,
+            None,
+            Some(20),
+        );
+        assert!(matches!(first, HookAuthorityDisposition::Applied(_)));
+
+        let competing = terminal.set_hook_authority_with_session_ref(
+            "other:claude-state".into(),
+            "claude".into(),
+            AgentState::Idle,
+            None,
+            None,
+            Some(1),
+        );
+        assert_eq!(
+            competing,
+            HookAuthorityDisposition::Rejected(HookAuthorityRejection::AuthorityConflict {
+                current_owner_source: "cairn:claude-state".into(),
+            })
+        );
+
+        let refresh = terminal.set_hook_authority_with_session_ref(
+            "cairn:claude-state".into(),
+            "claude".into(),
+            AgentState::Idle,
+            None,
+            None,
+            Some(21),
+        );
+        assert!(matches!(refresh, HookAuthorityDisposition::Applied(_)));
+        assert_eq!(terminal.state, AgentState::Idle);
     }
 
     #[test]
