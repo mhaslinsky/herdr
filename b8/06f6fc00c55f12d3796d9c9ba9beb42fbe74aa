@@ -1,0 +1,23 @@
+src/workspace/git/test_support.rs
+  s_bc40888563088b::t_a332d08be63c2b 4,6-11,13
+  s_bc40888563088b::t_b3e1b65ac7625b 5
+src/workspace/git/discovery.rs
+  s_bc40888563088b::t_a332d08be63c2b 296,300
+  s_bc40888563088b::t_b3e1b65ac7625b 299
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "b806f6fc00c55f12d3796d9c9ba9beb42fbe74aa",
+  "prompts": {},
+  "sessions": {
+    "s_bc40888563088b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0136b-00e2-7d50-baf0-2192da89f9e5",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
