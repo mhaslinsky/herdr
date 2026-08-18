@@ -692,13 +692,15 @@ impl TerminalState {
                     })))
         {
             let durable_session = self.hook_authority.as_ref().and_then(|authority| {
-                authority.session_ref.as_ref().map(|session_ref| {
-                    crate::agent_resume::PersistedAgentSession {
+                authority
+                    .session_ref
+                    .as_ref()
+                    .map(|session_ref| crate::agent_resume::PersistedAgentSession {
                         source: authority.source.clone(),
                         agent: authority.agent_label.clone(),
                         session_ref: session_ref.clone(),
-                    }
-                })
+                    })
+                    .or_else(|| self.persisted_agent_session.clone())
             });
             self.suppress_current_full_lifecycle_hook_authority(
                 FullLifecycleHookSuppressionReason::HookClear,
@@ -1953,11 +1955,13 @@ impl TerminalState {
         source: Option<&str>,
         seq: Option<u64>,
     ) -> Option<TerminalStateMutation> {
-        let sequence_source = source.map(str::to_string).or_else(|| {
-            self.hook_authority
-                .as_ref()
-                .map(|authority| authority.source.clone())
-        });
+        let held_authority_source = self
+            .hook_authority
+            .as_ref()
+            .map(|authority| authority.source.clone());
+        let sequence_source = source
+            .map(str::to_string)
+            .or_else(|| held_authority_source.clone());
         let should_clear = self
             .hook_authority
             .as_ref()
@@ -1984,9 +1988,9 @@ impl TerminalState {
                 crate::agent_resume::is_reserved_native_state_source(
                     &session.source,
                     &session.agent,
-                ) && sequence_source
+                ) && held_authority_source
                     .as_deref()
-                    .is_some_and(|clearing_source| clearing_source != session.source)
+                    .is_some_and(|authority_source| authority_source != session.source)
             });
         self.suppress_current_full_lifecycle_hook_authority(
             FullLifecycleHookSuppressionReason::HookClear,
@@ -6042,6 +6046,76 @@ mod tests {
             )),
             Some(("herdr:claude", "claude", "claude-session"))
         );
+    }
+
+    #[test]
+    fn source_less_custom_hook_clear_preserves_foreign_reserved_persist() {
+        let mut terminal = test_terminal();
+        terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
+            source: "herdr:claude".into(),
+            agent: "claude".into(),
+            session_ref: crate::agent_resume::AgentSessionRef::id("claude-session").unwrap(),
+        });
+        terminal
+            .set_hook_authority_with_session_ref(
+                "cairn:claude-state".into(),
+                "claude".into(),
+                AgentState::Working,
+                None,
+                None,
+                Some(20),
+            )
+            .expect("matching custom state source should take hook authority");
+
+        terminal
+            .clear_hook_authority_with_mutation(None, Some(21))
+            .expect("source-less hook clear should be accepted");
+
+        assert_eq!(
+            terminal.persisted_agent_session.as_ref().map(|session| (
+                session.source.as_str(),
+                session.agent.as_str(),
+                session.session_ref.value.as_str()
+            )),
+            Some(("herdr:claude", "claude", "claude-session"))
+        );
+    }
+
+    #[test]
+    fn detection_change_preserves_reserved_persist_without_hook_session_ref() {
+        for next_detected_agent in [None, Some(Agent::Grok)] {
+            let mut terminal = test_terminal();
+            terminal.set_detected_state(Some(Agent::Claude), AgentState::Idle);
+            terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
+                source: "herdr:claude".into(),
+                agent: "claude".into(),
+                session_ref: crate::agent_resume::AgentSessionRef::id("claude-session").unwrap(),
+            });
+            terminal
+                .set_hook_authority_with_session_ref(
+                    "cairn:claude-state".into(),
+                    "claude".into(),
+                    AgentState::Working,
+                    None,
+                    None,
+                    Some(20),
+                )
+                .expect("matching custom state source should take hook authority");
+
+            let mutation =
+                terminal.set_detected_state_with_mutation(next_detected_agent, AgentState::Unknown);
+
+            assert!(!mutation.session_ref_changed);
+            assert!(terminal.hook_authority.is_none());
+            assert_eq!(
+                terminal.persisted_agent_session.as_ref().map(|session| (
+                    session.source.as_str(),
+                    session.agent.as_str(),
+                    session.session_ref.value.as_str()
+                )),
+                Some(("herdr:claude", "claude", "claude-session"))
+            );
+        }
     }
 
     #[test]
