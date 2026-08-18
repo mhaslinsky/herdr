@@ -1,0 +1,21 @@
+src/detect/manifests/claude.toml
+  s_bc40888563088b::t_23c180bd493ab6 2
+website/agent-detection/claude.toml
+  s_bc40888563088b::t_23c180bd493ab6 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "a4dbf083eec6b38bd9c63f9a11568fb8a358ac74",
+  "prompts": {},
+  "sessions": {
+    "s_bc40888563088b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0136b-00e2-7d50-baf0-2192da89f9e5",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
