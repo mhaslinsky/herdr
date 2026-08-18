@@ -64,6 +64,11 @@ impl App {
                 results,
                 cache_updates,
             } => self.handle_git_status_refreshed(results, cache_updates),
+            AppEvent::TabBarCommandFinished {
+                generation,
+                segment_index,
+                result,
+            } => self.handle_tab_bar_command_finished(generation, segment_index, result),
             ev @ AppEvent::TerminalBell { .. } => {
                 self.handle_internal_event(ev);
                 false
@@ -101,14 +106,20 @@ impl App {
     }
 
     pub(crate) fn handle_internal_event(&mut self, ev: AppEvent) {
-        self.last_pane_state_updates.clear();
+        let _ = self.handle_internal_event_with_pane_updates(ev);
+    }
+
+    pub(crate) fn handle_internal_event_with_pane_updates(
+        &mut self,
+        ev: AppEvent,
+    ) -> Vec<crate::app::actions::PaneStateUpdate> {
         if let AppEvent::TerminalBell { count, .. } = ev {
             if let Err(err) =
                 crate::terminal_effects::write_terminal_bells(&mut std::io::stdout(), count)
             {
                 tracing::warn!(err = %err, "failed to emit terminal bell");
             }
-            return;
+            return Vec::new();
         }
 
         if let AppEvent::ClipboardWrite { content } = ev {
@@ -117,7 +128,7 @@ impl App {
             #[cfg(test)]
             let _ = content;
             self.show_clipboard_feedback();
-            return;
+            return Vec::new();
         }
 
         if let AppEvent::PrefixInputSource { active } = ev {
@@ -126,14 +137,14 @@ impl App {
             // App-internal drain consume the event before the forwarding drain, the flag keeps the
             // switch out of the headless server process.
             if !self.local_input_source_switch {
-                return;
+                return Vec::new();
             }
             if active {
                 self.prefix_input_source.switch_to_ascii();
             } else {
                 self.prefix_input_source.restore();
             }
-            return;
+            return Vec::new();
         }
 
         if let AppEvent::GitStatusRefreshed {
@@ -142,7 +153,17 @@ impl App {
         } = ev
         {
             self.handle_git_status_refreshed(results, cache_updates);
-            return;
+            return Vec::new();
+        }
+
+        if let AppEvent::TabBarCommandFinished {
+            generation,
+            segment_index,
+            result,
+        } = ev
+        {
+            let _ = self.handle_tab_bar_command_finished(generation, segment_index, result);
+            return Vec::new();
         }
 
         if let AppEvent::PluginCommandFinished {
@@ -173,17 +194,17 @@ impl App {
                     crate::api::schema::PluginCommandStatus::Failed
                 };
             }
-            return;
+            return Vec::new();
         }
 
         if let AppEvent::WorktreeAddFinished(result) = ev {
             self.handle_worktree_add_finished(*result);
-            return;
+            return Vec::new();
         }
 
         if let AppEvent::WorktreeRemoveFinished(result) = ev {
             self.handle_worktree_remove_finished(*result);
-            return;
+            return Vec::new();
         }
 
         if let AppEvent::PaneDied { pane_id } = &ev {
@@ -194,7 +215,7 @@ impl App {
                 .is_some_and(|popup| popup.pane_id == *pane_id)
             {
                 self.close_popup_pane();
-                return;
+                return Vec::new();
             }
             let previous_toast = self.state.toast.clone();
             if let Some(update) = self.state.publish_pane_process_exit_if_agent(*pane_id) {
@@ -209,7 +230,7 @@ impl App {
                 self.overlay_panes.remove(pane_id);
                 self.render_dirty.request_generic();
                 self.render_notify.notify_one();
-                return;
+                return Vec::new();
             }
         }
 
@@ -287,7 +308,6 @@ impl App {
         let terminal_cwd_reported = matches!(ev, AppEvent::TerminalCwdReported { .. });
         let previous_toast = self.state.toast.clone();
         let pane_updates = self.state.handle_app_event(ev);
-        self.last_pane_state_updates.clone_from(&pane_updates);
         if let Some(agents) = manifest_update_agents {
             self.reset_agent_detection_for_agents(&agents);
         }
@@ -355,10 +375,7 @@ impl App {
 
         self.sync_toast_deadline(previous_toast);
         self.shutdown_detached_terminal_runtimes();
-    }
-
-    pub(crate) fn last_pane_state_updates(&self) -> &[crate::app::actions::PaneStateUpdate] {
-        &self.last_pane_state_updates
+        pane_updates
     }
 
     fn reset_agent_detection_for_agents(&self, agents: &[crate::detect::Agent]) {
@@ -960,7 +977,7 @@ impl App {
         &mut self,
         request: crate::api::schema::Request,
     ) -> String {
-        self.sync_terminal_titles();
+        self.sync_pending_terminal_titles();
         use crate::api::schema::{
             ErrorBody, ErrorResponse, Method, ResponseResult, SuccessResponse,
         };

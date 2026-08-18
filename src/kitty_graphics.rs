@@ -1180,38 +1180,53 @@ pub(crate) fn prepare_direct_file(
     graphics: &crate::app::pane_graphics::Runtime,
     surface: crate::ui::TabSurfaceView<'_>,
     cell_size: HostCellSize,
-    cache: &mut HostGraphicsCache,
+    allow_placement: bool,
+    cache: &HostGraphicsCache,
     key: &crate::app::pane_graphics::Key,
 ) -> Option<DirectFileCommand> {
-    if app.mode != Mode::Terminal || !cell_size.is_known() || app.active.is_none() {
-        return None;
-    }
-    let info = surface.pane_infos.iter().find(|info| info.id == key.0)?;
     let slot = graphics.slots.get(key)?;
     let layer = slot.layer.as_ref()?;
     layer.direct_lease()?;
-    let placement = pane_graphics_host_placement(
-        info,
-        &key.1,
-        slot.host_image_id,
-        cell_size,
-        layer,
-        &cache.images,
-        false,
-    );
-    let (command, clipped, format_code, placement_id) =
-        direct_file_command(&placement, slot.host_image_id)?;
-    cache
-        .images
-        .insert(slot.host_image_id, image_signature(&placement, format_code));
-    cache.placements.insert(
-        (slot.host_image_id, placement_id),
-        placement_signature(clipped, layer.z_index, 0),
-    );
-    cache
-        .sources
-        .insert(placement.source_key, slot.host_image_id);
-    Some(command)
+
+    let info = allow_placement
+        .then(|| surface.pane_infos.iter().find(|info| info.id == key.0))
+        .flatten()
+        .filter(|_| app.mode == Mode::Terminal && cell_size.is_known() && app.active.is_some());
+    if let Some(command) = info
+        .map(|info| {
+            pane_graphics_host_placement(
+                info,
+                &key.1,
+                slot.host_image_id,
+                cell_size,
+                layer,
+                &cache.images,
+                false,
+            )
+        })
+        .and_then(|placement| direct_file_command(&placement, slot.host_image_id))
+        .map(|(command, _, _, _)| command)
+    {
+        return Some(command);
+    }
+
+    let inline_fallback_available = layer.data_len()
+        <= crate::api::schema::PANE_GRAPHICS_STREAM_MAX_BYTES
+        && graphics.can_store_inline(key, layer.data_len());
+    (!inline_fallback_available).then(|| direct_file_upload_command(layer, slot.host_image_id))
+}
+
+fn direct_file_upload_command(
+    layer: &crate::app::pane_graphics::Layer,
+    host_image_id: u32,
+) -> DirectFileCommand {
+    DirectFileCommand {
+        leading: Vec::new(),
+        control: format!(
+            "a=t,f=32,s={},v={},i={host_image_id},q=0",
+            layer.image_width, layer.image_height
+        ),
+    }
 }
 
 fn direct_file_command(

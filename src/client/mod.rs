@@ -421,6 +421,7 @@ fn setup_terminal_with_capabilities(
     Ok(TerminalGuard {
         reset_modify_other_keys: modify_other_keys_mode.is_some(),
         reset_host_color_scheme_reports: host_color_scheme_reports,
+        restored: false,
         #[cfg(windows)]
         restore_windows_input_mode: windows_virtual_terminal_input.restore_mode,
     })
@@ -434,6 +435,7 @@ fn should_enable_host_color_scheme_reports(enable_client_protocols: bool) -> boo
 struct TerminalGuard {
     reset_modify_other_keys: bool,
     reset_host_color_scheme_reports: bool,
+    restored: bool,
     #[cfg(windows)]
     restore_windows_input_mode: Option<u32>,
 }
@@ -582,7 +584,7 @@ fn restore_terminal_state(
     reset_modify_other_keys: bool,
     reset_host_color_scheme_reports: bool,
     #[cfg(windows)] restore_windows_input_mode: Option<u32>,
-) {
+) -> io::Result<()> {
     let _ = clear_received_kitty_graphics(&mut io::stdout());
 
     // Reset modifyOtherKeys if we enabled it.
@@ -606,13 +608,16 @@ fn restore_terminal_state(
         restore_windows_input_mode_value(mode);
     }
 
-    ratatui::restore();
-    let _ = write_terminal_restore_postlude(&mut io::stdout(), reset_host_color_scheme_reports);
+    let restore_result = ratatui::try_restore();
+    let postlude_result =
+        write_terminal_restore_postlude(&mut io::stdout(), reset_host_color_scheme_reports);
 
     #[cfg(windows)]
     if windows_vti_input_backend_enabled() && windows_win32_input_mode_enabled() {
         let _ = disable_windows_win32_input_mode(&mut io::stdout());
     }
+
+    restore_result.and(postlude_result)
 }
 
 #[cfg(not(windows))]
@@ -657,14 +662,28 @@ fn disable_windows_win32_input_mode(writer: &mut impl std::io::Write) -> io::Res
     writer.flush()
 }
 
-impl Drop for TerminalGuard {
-    fn drop(&mut self) {
+impl TerminalGuard {
+    fn restore(mut self) -> io::Result<()> {
+        self.restored = true;
         restore_terminal_state(
             self.reset_modify_other_keys,
             self.reset_host_color_scheme_reports,
             #[cfg(windows)]
             self.restore_windows_input_mode,
-        );
+        )
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        if !self.restored {
+            let _ = restore_terminal_state(
+                self.reset_modify_other_keys,
+                self.reset_host_color_scheme_reports,
+                #[cfg(windows)]
+                self.restore_windows_input_mode,
+            );
+        }
     }
 }
 
@@ -1281,7 +1300,7 @@ fn run_client_with_mode(
     let panic_restore_windows_input_mode = terminal_guard.restore_windows_input_mode;
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        restore_terminal_state(
+        let _ = restore_terminal_state(
             panic_resets_modify_other_keys,
             panic_resets_host_color_scheme_reports,
             #[cfg(windows)]
@@ -1323,19 +1342,22 @@ fn run_client_with_mode(
     });
 
     // Restore the terminal before printing any final status message.
-    drop(terminal_guard);
+    let terminal_restore_failed = terminal_guard.restore().is_err();
 
     if let Err(err) = result {
-        eprintln!("herdr: {err}");
+        let _ = writeln!(io::stderr(), "herdr: {err}");
         rt.shutdown_timeout(Duration::from_millis(100));
         crate::logging::shutdown("client");
 
-        if matches!(
-            err,
+        let detached = matches!(
+            &err,
             ClientError::ServerShutdown {
                 reason: Some(reason)
             } if reason == "detached"
-        ) {
+        );
+        let connection_lost_during_terminal_hangup =
+            terminal_restore_failed && matches!(&err, ClientError::ConnectionLost(_));
+        if detached || connection_lost_during_terminal_hangup {
             return Ok(());
         }
 
@@ -1721,8 +1743,8 @@ async fn run_client_loop(
                                     len,
                                 )
                                 .is_ok()
+                                    && direct_graphics::valid_control(&control, image_id, len)
                             })
-                            && direct_graphics::valid_control(&control, image_id)
                             && state
                                 .direct_graphics_response
                                 .lock()
@@ -1808,8 +1830,10 @@ async fn run_client_loop(
                     let _ = io::stdout().flush();
                 }
                 ServerMessage::WindowTitle { title } => {
-                    write_window_title(title.as_deref());
-                    let _ = io::stdout().flush();
+                    let _ = crate::terminal_effects::write_window_title(
+                        &mut io::stdout(),
+                        title.as_deref(),
+                    );
                 }
                 ServerMessage::ReloadSoundConfig => {
                     reload_local_client_config(
@@ -2302,19 +2326,6 @@ fn forward_clipboard(data: &str) {
     crate::selection::write_osc52_bytes(&bytes);
 }
 
-fn window_title_osc(title: Option<&str>) -> Vec<u8> {
-    let title = title.unwrap_or("herdr");
-    let safe_title = title
-        .chars()
-        .filter(|ch| !matches!(*ch, '\u{1b}' | '\u{7}' | '\u{9c}'))
-        .collect::<String>();
-    format!("\x1b]0;{safe_title}\x07").into_bytes()
-}
-
-fn write_window_title(title: Option<&str>) {
-    let _ = io::stdout().write_all(&window_title_osc(title));
-}
-
 // ---------------------------------------------------------------------------
 // Frame output
 // ---------------------------------------------------------------------------
@@ -2560,7 +2571,9 @@ fn should_query_host_terminal_theme() -> bool {
 }
 
 fn write_host_terminal_theme_query(mut writer: impl io::Write) -> io::Result<()> {
-    let query = crate::terminal_theme::host_terminal_theme_query_sequence();
+    let query = crate::terminal_theme::host_terminal_theme_query_sequence(
+        crate::platform::should_query_host_terminal_palette(),
+    );
     writer.write_all(query.as_bytes())?;
     writer.flush()
 }
@@ -2988,7 +3001,10 @@ mod tests {
         write_host_terminal_theme_query(&mut output).unwrap();
         assert_eq!(
             output,
-            crate::terminal_theme::host_terminal_theme_query_sequence().as_bytes()
+            crate::terminal_theme::host_terminal_theme_query_sequence(
+                crate::platform::should_query_host_terminal_palette(),
+            )
+            .as_bytes()
         );
         assert!(!output
             .windows(crate::terminal_theme::HOST_COLOR_SCHEME_QUERY_SEQUENCE.len())
@@ -3568,14 +3584,5 @@ mod tests {
         unsafe {
             std::env::remove_var("SSH_CONNECTION");
         }
-    }
-
-    #[test]
-    fn window_title_osc_strips_terminators_and_defaults_to_herdr() {
-        assert_eq!(
-            window_title_osc(Some("herdr\x1b api\u{7}\u{9c}")),
-            b"\x1b]0;herdr api\x07"
-        );
-        assert_eq!(window_title_osc(None), b"\x1b]0;herdr\x07");
     }
 }
