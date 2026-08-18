@@ -11,7 +11,10 @@ use crate::layout::PaneId;
 #[cfg(test)]
 use crate::layout::{find_in_direction, NavDirection};
 use crate::selection::Selection;
-use crate::terminal::{EffectiveStateChange, TerminalStateMutation};
+use crate::terminal::{
+    EffectiveStateChange, HookAuthorityDisposition, HookAuthoritySilentDisposition,
+    TerminalStateMutation,
+};
 use crate::workspace::WorkspaceGitStatus;
 
 use super::api_helpers::pane_agent_status;
@@ -2783,6 +2786,44 @@ impl AppState {
         changed
     }
 
+    pub(crate) fn handle_hook_state_report(
+        &mut self,
+        pane_id: PaneId,
+        source: String,
+        agent_label: String,
+        state: AgentState,
+        message: Option<String>,
+        seq: Option<u64>,
+        session_ref: Option<crate::agent_resume::AgentSessionRef>,
+    ) -> Option<(HookAuthorityDisposition, Vec<PaneStateUpdate>)> {
+        let mut disposition = None;
+        let pane_update = self.update_terminal_state(pane_id, |terminal| {
+            let report_disposition =
+                if crate::agent_resume::is_reserved_native_state_source(&source, &agent_label) {
+                    match terminal.set_agent_session_ref(source, agent_label, session_ref, seq) {
+                        Some(mutation) => HookAuthorityDisposition::Applied(Box::new(mutation)),
+                        None => HookAuthorityDisposition::Silent(
+                            HookAuthoritySilentDisposition::ReservedNativeStateSource,
+                        ),
+                    }
+                } else {
+                    terminal.set_hook_authority_with_session_ref(
+                        source,
+                        agent_label,
+                        state,
+                        message,
+                        session_ref,
+                        seq,
+                    )
+                };
+            let mutation = report_disposition.mutation().cloned();
+            disposition = Some(report_disposition);
+            mutation
+        });
+
+        Some((disposition?, pane_update.into_iter().collect()))
+    }
+
     pub fn handle_app_event(&mut self, event: AppEvent) -> Vec<PaneStateUpdate> {
         match event {
             AppEvent::PaneDied { pane_id } => {
@@ -2896,14 +2937,17 @@ impl AppState {
                     .collect()
                 } else {
                     self.update_terminal_state(pane_id, |terminal| {
-                        terminal.set_hook_authority_with_session_ref(
-                            source,
-                            agent_label,
-                            state,
-                            message,
-                            session_ref,
-                            seq,
-                        )
+                        terminal
+                            .set_hook_authority_with_session_ref(
+                                source,
+                                agent_label,
+                                state,
+                                message,
+                                session_ref,
+                                seq,
+                            )
+                            .mutation()
+                            .cloned()
                     })
                     .into_iter()
                     .collect()

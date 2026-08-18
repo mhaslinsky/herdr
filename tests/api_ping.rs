@@ -218,6 +218,63 @@ fn send_request(socket_path: &Path, json: &str) -> serde_json::Value {
     reader.read_json_line(Duration::from_secs(5))
 }
 
+struct ReservedAuthorityFixture {
+    base: PathBuf,
+    socket_path: PathBuf,
+    child: SpawnedHerdr,
+    pane_id: String,
+}
+
+fn spawn_reserved_authority_fixture() -> ReservedAuthorityFixture {
+    let base = unique_test_dir();
+    let config_home = base.join("config");
+    let runtime_dir = base.join("runtime");
+    let socket_path = runtime_dir.join("herdr.sock");
+    let child = spawn_herdr(&config_home, &runtime_dir, &socket_path);
+    wait_for_socket(&socket_path, Duration::from_secs(5));
+
+    let created = send_request(
+        &socket_path,
+        &format!(
+            r#"{{"id":"reserved_create","method":"workspace.create","params":{{"cwd":"{}","focus":true}}}}"#,
+            base.display()
+        ),
+    );
+    let pane_id = created["result"]["root_pane"]["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let session = send_request(
+        &socket_path,
+        &format!(
+            r#"{{"id":"reserved_session","method":"pane.report_agent_session","params":{{"pane_id":"{}","source":"herdr:claude","agent":"claude","agent_session_id":"claude-session","session_start_source":"startup","seq":1}}}}"#,
+            pane_id
+        ),
+    );
+    assert_eq!(session["result"]["type"], "ok");
+
+    ReservedAuthorityFixture {
+        base,
+        socket_path,
+        child,
+        pane_id,
+    }
+}
+
+fn get_fixture_pane(fixture: &ReservedAuthorityFixture, request_id: &str) -> serde_json::Value {
+    send_request(
+        &fixture.socket_path,
+        &format!(
+            r#"{{"id":"{}","method":"pane.get","params":{{"pane_id":"{}"}}}}"#,
+            request_id, fixture.pane_id
+        ),
+    )
+}
+
+fn cleanup_reserved_authority_fixture(fixture: ReservedAuthorityFixture) {
+    cleanup_spawned_herdr(fixture.child, fixture.base);
+}
+
 fn open_subscription(socket_path: &Path, json: &str) -> JsonLineReader {
     let mut reader = JsonLineReader::connect(socket_path);
     reader.send_line(json);
@@ -1616,6 +1673,154 @@ fn events_subscribe_streams_tab_and_workspace_close_events() {
     assert_eq!(workspace_closed["data"]["workspace_id"], workspace_id);
 
     cleanup_spawned_herdr(child, base);
+}
+
+#[test]
+fn reserved_session_owner_allows_matching_custom_state_authority() {
+    let _lock = test_lock();
+    let fixture = spawn_reserved_authority_fixture();
+
+    let report = send_request(
+        &fixture.socket_path,
+        &format!(
+            r#"{{"id":"custom_takeover","method":"pane.report_agent","params":{{"pane_id":"{}","source":"cairn:claude-state","agent":"claude","state":"working","seq":1}}}}"#,
+            fixture.pane_id
+        ),
+    );
+    assert_eq!(report["result"]["type"], "ok");
+
+    let pane = get_fixture_pane(&fixture, "custom_takeover_get");
+    assert_eq!(pane["result"]["pane"]["agent"], "claude");
+    assert_eq!(pane["result"]["pane"]["agent_status"], "working");
+    assert_eq!(
+        pane["result"]["pane"]["agent_session"]["source"],
+        "herdr:claude"
+    );
+    assert_eq!(pane["result"]["pane"]["agent_session"]["agent"], "claude");
+    assert_eq!(
+        pane["result"]["pane"]["agent_session"]["value"],
+        "claude-session"
+    );
+
+    cleanup_reserved_authority_fixture(fixture);
+}
+
+#[test]
+fn second_custom_source_is_rejected_while_first_holds_authority() {
+    let _lock = test_lock();
+    let fixture = spawn_reserved_authority_fixture();
+
+    let first = send_request(
+        &fixture.socket_path,
+        &format!(
+            r#"{{"id":"custom_first","method":"pane.report_agent","params":{{"pane_id":"{}","source":"cairn:claude-state","agent":"claude","state":"working","seq":1}}}}"#,
+            fixture.pane_id
+        ),
+    );
+    assert_eq!(first["result"]["type"], "ok");
+
+    let second = send_request(
+        &fixture.socket_path,
+        &format!(
+            r#"{{"id":"custom_second","method":"pane.report_agent","params":{{"pane_id":"{}","source":"other:claude-state","agent":"claude","state":"idle","seq":1}}}}"#,
+            fixture.pane_id
+        ),
+    );
+    assert_eq!(second["error"]["code"], "authority_conflict");
+    assert!(second["error"]["message"]
+        .as_str()
+        .is_some_and(|message| message.contains("cairn:claude-state")));
+
+    cleanup_reserved_authority_fixture(fixture);
+}
+
+#[test]
+fn custom_clear_restores_scrape_state_and_preserves_reserved_session() {
+    let _lock = test_lock();
+    let fixture = spawn_reserved_authority_fixture();
+
+    let report = send_request(
+        &fixture.socket_path,
+        &format!(
+            r#"{{"id":"custom_before_clear","method":"pane.report_agent","params":{{"pane_id":"{}","source":"cairn:claude-state","agent":"claude","state":"working","seq":1}}}}"#,
+            fixture.pane_id
+        ),
+    );
+    assert_eq!(report["result"]["type"], "ok");
+    assert_eq!(
+        get_fixture_pane(&fixture, "custom_before_clear_get")["result"]["pane"]["agent_status"],
+        "working"
+    );
+
+    let cleared = send_request(
+        &fixture.socket_path,
+        &format!(
+            r#"{{"id":"custom_clear","method":"pane.clear_agent_authority","params":{{"pane_id":"{}","source":"cairn:claude-state","seq":2}}}}"#,
+            fixture.pane_id
+        ),
+    );
+    assert_eq!(cleared["result"]["type"], "ok");
+
+    let pane = get_fixture_pane(&fixture, "custom_after_clear_get");
+    assert_eq!(pane["result"]["pane"]["agent_status"], "unknown");
+    assert_eq!(
+        pane["result"]["pane"]["agent_session"]["source"],
+        "herdr:claude"
+    );
+    assert_eq!(pane["result"]["pane"]["agent_session"]["agent"], "claude");
+    assert_eq!(
+        pane["result"]["pane"]["agent_session"]["value"],
+        "claude-session"
+    );
+
+    cleanup_reserved_authority_fixture(fixture);
+}
+
+#[test]
+fn custom_source_with_wrong_agent_label_gets_authority_conflict() {
+    let _lock = test_lock();
+    let fixture = spawn_reserved_authority_fixture();
+
+    let report = send_request(
+        &fixture.socket_path,
+        &format!(
+            r#"{{"id":"custom_wrong_label","method":"pane.report_agent","params":{{"pane_id":"{}","source":"cairn:claude-state","agent":"codex","state":"working","seq":1}}}}"#,
+            fixture.pane_id
+        ),
+    );
+    assert_eq!(report["error"]["code"], "authority_conflict");
+    assert!(report["error"]["message"]
+        .as_str()
+        .is_some_and(|message| message.contains("herdr:claude")));
+
+    cleanup_reserved_authority_fixture(fixture);
+}
+
+#[test]
+fn stale_custom_report_gets_stale_sequence_not_authority_conflict() {
+    let _lock = test_lock();
+    let fixture = spawn_reserved_authority_fixture();
+
+    let first = send_request(
+        &fixture.socket_path,
+        &format!(
+            r#"{{"id":"custom_seq_first","method":"pane.report_agent","params":{{"pane_id":"{}","source":"cairn:claude-state","agent":"claude","state":"working","seq":5}}}}"#,
+            fixture.pane_id
+        ),
+    );
+    assert_eq!(first["result"]["type"], "ok");
+
+    let stale = send_request(
+        &fixture.socket_path,
+        &format!(
+            r#"{{"id":"custom_seq_stale","method":"pane.report_agent","params":{{"pane_id":"{}","source":"cairn:claude-state","agent":"claude","state":"idle","seq":4}}}}"#,
+            fixture.pane_id
+        ),
+    );
+    assert_eq!(stale["error"]["code"], "stale_sequence");
+    assert_ne!(stale["error"]["code"], "authority_conflict");
+
+    cleanup_reserved_authority_fixture(fixture);
 }
 
 #[cfg(not(target_os = "macos"))]
