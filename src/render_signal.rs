@@ -8,6 +8,7 @@ use crate::layout::PaneId;
 pub(crate) struct RenderRequest {
     pub(crate) generic: bool,
     pub(crate) pty_sources: HashSet<PaneId>,
+    pub(crate) terminal_title_sources: HashSet<PaneId>,
 }
 
 /// Coalesces render requests while retaining enough origin information for the
@@ -36,14 +37,61 @@ impl RenderSignal {
         self.pending.store(true, Ordering::Release);
     }
 
-    /// Returns true when this request transitions the signal from idle to pending.
+    /// Returns true when the signal becomes pending or a new PTY source joins it.
+    ///
+    /// A new source may be visible even when the existing pending sources are
+    /// hidden, so the consumer must re-evaluate the coalesced request.
     pub(crate) fn request_pty(&self, pane_id: PaneId) -> bool {
         let mut request = self
             .request
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        request.pty_sources.insert(pane_id);
-        !self.pending.swap(true, Ordering::AcqRel)
+        let source_added = request.pty_sources.insert(pane_id);
+        let became_pending = !self.pending.swap(true, Ordering::AcqRel);
+        became_pending || source_added
+    }
+
+    pub(crate) fn has_generic_or_terminal_title(&self) -> bool {
+        let request = self
+            .request
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        request.generic || !request.terminal_title_sources.is_empty()
+    }
+
+    /// Checks pending PTY origins without allocating a source snapshot.
+    /// Keep the predicate narrow because producers share this lock.
+    pub(crate) fn has_pty_source_matching(
+        &self,
+        mut predicate: impl FnMut(PaneId) -> bool,
+    ) -> bool {
+        self.request
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .pty_sources
+            .iter()
+            .copied()
+            .any(&mut predicate)
+    }
+
+    /// Coalesces terminal-title changes separately from ordinary PTY damage so
+    /// consumers can update metadata without inspecting every pane.
+    pub(crate) fn request_terminal_title(&self, pane_id: PaneId) -> bool {
+        let mut request = self
+            .request
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let source_added = request.terminal_title_sources.insert(pane_id);
+        let became_pending = !self.pending.swap(true, Ordering::AcqRel);
+        became_pending || source_added
+    }
+
+    pub(crate) fn pending_terminal_title_sources(&self) -> HashSet<PaneId> {
+        self.request
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .terminal_title_sources
+            .clone()
     }
 
     pub(crate) fn take(&self) -> RenderRequest {
@@ -68,12 +116,40 @@ mod tests {
 
         assert!(signal.request_pty(first));
         assert!(!signal.request_pty(first));
-        assert!(!signal.request_pty(second));
+        assert!(signal.request_pty(second));
 
         let request = signal.take();
         assert!(!request.generic);
         assert_eq!(request.pty_sources, HashSet::from([first, second]));
+        assert!(request.terminal_title_sources.is_empty());
         assert!(!signal.is_pending());
+    }
+
+    #[test]
+    fn terminal_title_source_wakes_pending_pty_work() {
+        let signal = RenderSignal::new();
+        let pane_id = PaneId::from_raw(10);
+
+        assert!(signal.request_pty(pane_id));
+        assert!(signal.request_terminal_title(pane_id));
+        assert!(!signal.request_terminal_title(pane_id));
+    }
+
+    #[test]
+    fn coalesces_terminal_title_sources_without_making_them_pty_damage() {
+        let signal = RenderSignal::new();
+        let pane_id = PaneId::from_raw(10);
+
+        assert!(signal.request_terminal_title(pane_id));
+        assert!(!signal.request_terminal_title(pane_id));
+        assert_eq!(
+            signal.pending_terminal_title_sources(),
+            HashSet::from([pane_id])
+        );
+
+        let request = signal.take();
+        assert!(request.pty_sources.is_empty());
+        assert_eq!(request.terminal_title_sources, HashSet::from([pane_id]));
     }
 
     #[test]
@@ -82,7 +158,7 @@ mod tests {
         let pane_id = PaneId::from_raw(10);
 
         signal.request_generic();
-        assert!(!signal.request_pty(pane_id));
+        assert!(signal.request_pty(pane_id));
 
         let request = signal.take();
         assert!(request.generic);

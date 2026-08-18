@@ -184,7 +184,7 @@ pub fn notification_toast_for_pane_state_update(
     suppress_active_tab_notifications: bool,
     update: &PaneStateUpdate,
 ) -> Option<ToastKind> {
-    if update.completion_deferred {
+    if update.suppress_completion || update.completion_deferred {
         return None;
     }
     if suppress_active_tab_notifications
@@ -210,7 +210,7 @@ pub fn notification_sound_for_pane_state_update(
     suppress_active_tab_notifications: bool,
     update: &PaneStateUpdate,
 ) -> Option<crate::sound::Sound> {
-    if update.completion_deferred {
+    if update.suppress_completion || update.completion_deferred {
         return None;
     }
     if update.deferred_completion {
@@ -288,6 +288,7 @@ pub struct PaneStateUpdate {
     pub background_work_changed: bool,
     pub completion_deferred: bool,
     pub deferred_completion: bool,
+    pub suppress_completion: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -1099,7 +1100,8 @@ impl AppState {
                     .get_mut(&terminal_id)?
                     .expire_agent_metadata_at(scheduled_deadline, now)?;
                 let change = mutation.effective_state_change?;
-                let seen = self.apply_pane_state_change(ws_idx, pane_id, &change, false, false)?;
+                let seen =
+                    self.apply_pane_state_change(ws_idx, pane_id, &change, false, false, false)?;
                 let update = PaneStateUpdate {
                     pane_id,
                     ws_idx,
@@ -1120,6 +1122,7 @@ impl AppState {
                     background_work_changed: false,
                     completion_deferred: false,
                     deferred_completion: false,
+                    suppress_completion: false,
                 };
                 Some(update)
             })
@@ -1815,7 +1818,7 @@ impl AppState {
 
         let layout = crate::ui::compute_tab_bar_view(
             ws,
-            area,
+            crate::ui::tab_bar_content_area(self, area),
             self.tab_scroll,
             self.tab_scroll_follow_active,
             self.mouse_capture,
@@ -2838,6 +2841,16 @@ impl AppState {
                 }
                 Vec::new()
             }
+            AppEvent::AgentProcessDetected {
+                pane_id,
+                agent,
+                observed_at,
+            } => self
+                .update_terminal_state(pane_id, |terminal| {
+                    Some(terminal.set_detected_agent_process_at(agent, observed_at))
+                })
+                .into_iter()
+                .collect(),
             AppEvent::StateChanged {
                 pane_id,
                 agent,
@@ -3008,6 +3021,7 @@ impl AppState {
             }
             AppEvent::WorktreeAddFinished(_) => Vec::new(),
             AppEvent::WorktreeRemoveFinished(_) => Vec::new(),
+            AppEvent::TabBarCommandFinished { .. } => Vec::new(),
             AppEvent::PluginCommandFinished { .. } => Vec::new(),
         }
     }
@@ -3026,11 +3040,21 @@ impl AppState {
             .clone();
         let previous_seen = self.workspaces[ws_idx].pane_state(pane_id)?.seen;
         let now = Instant::now();
-        let (mutation, managed_changed, agent_name_changed, previous_agent_name, unchanged_change) = {
+        let (
+            mutation,
+            managed_changed,
+            agent_name_changed,
+            previous_agent_name,
+            unchanged_change,
+            managed_launch_pending,
+            suppress_acquisition_completion,
+        ) = {
             let terminal = self.terminals.get_mut(&terminal_id)?;
             let previous_agent_name = terminal.agent_name.clone();
+            let managed_launch_pending = terminal.managed_agent_launch_pending();
             let mutation = update(terminal)?;
             let managed_changed = terminal.reconcile_managed_agent_at(now, false);
+            let suppress_acquisition_completion = terminal.finish_agent_process_acquisition();
             let agent_name_changed = terminal.agent_name != previous_agent_name;
             let unchanged_change =
                 (mutation.agent_released || agent_name_changed || mutation.background_work_changed)
@@ -3041,6 +3065,8 @@ impl AppState {
                 agent_name_changed,
                 previous_agent_name,
                 unchanged_change,
+                managed_launch_pending,
+                suppress_acquisition_completion,
             )
         };
         if mutation.session_ref_changed || managed_changed || agent_name_changed {
@@ -3053,6 +3079,8 @@ impl AppState {
             && !agent_name_changed;
         let agent_released = mutation.agent_released;
         let change = mutation.effective_state_change.or(unchanged_change)?;
+        let suppress_completion = change.state == AgentState::Idle
+            && (managed_launch_pending || suppress_acquisition_completion);
         if change.previous_state != change.state || mutation.deferred_completion {
             self.next_agent_state_change_seq += 1;
             if let Some(terminal) = self.terminals.get_mut(&terminal_id) {
@@ -3068,6 +3096,7 @@ impl AppState {
                 &change,
                 mutation.completion_deferred,
                 mutation.deferred_completion,
+                suppress_completion,
             )?
         };
         let update = PaneStateUpdate {
@@ -3098,6 +3127,7 @@ impl AppState {
             background_work_changed: mutation.background_work_changed,
             completion_deferred: mutation.completion_deferred,
             deferred_completion: mutation.deferred_completion,
+            suppress_completion,
         };
         Some(update)
     }
@@ -3166,6 +3196,7 @@ impl AppState {
         change: &EffectiveStateChange,
         completion_deferred: bool,
         deferred_completion: bool,
+        suppress_completion: bool,
     ) -> Option<bool> {
         let is_active_tab = self.pane_is_in_active_tab(ws_idx, pane_id);
         let suppress_active_tab_notifications =
@@ -3178,7 +3209,9 @@ impl AppState {
         if !completion_deferred {
             if change.state != AgentState::Idle {
                 pane.seen = true;
-            } else if is_completion_transition(change) || deferred_completion {
+            } else if !suppress_completion
+                && (is_completion_transition(change) || deferred_completion)
+            {
                 pane.seen = suppress_active_tab_notifications;
             }
         }
@@ -3186,10 +3219,15 @@ impl AppState {
 
         if completion_deferred {
             self.pending_agent_notifications.remove(&pane_id);
-        } else if let Some(delivery) =
-            self.record_or_deliver_agent_notification(ws_idx, pane_id, change, deferred_completion)
-        {
-            self.apply_agent_notification_delivery(&delivery);
+        } else if !suppress_completion {
+            if let Some(delivery) = self.record_or_deliver_agent_notification(
+                ws_idx,
+                pane_id,
+                change,
+                deferred_completion,
+            ) {
+                self.apply_agent_notification_delivery(&delivery);
+            }
         }
 
         Some(seen)
@@ -5304,6 +5342,107 @@ mod tests {
 
         let pane = state.workspaces[1].panes.get(&bg_pane_id).unwrap();
         assert!(!pane.seen);
+    }
+
+    #[test]
+    fn first_idle_after_process_detection_is_not_completion() {
+        let mut state = app_with_workspaces(&["active", "background"]);
+        state.toast_config.delivery = crate::config::ToastDelivery::Herdr;
+        state.active = Some(0);
+        let pane_id = *state.workspaces[1].panes.keys().next().unwrap();
+
+        state.handle_app_event(AppEvent::AgentProcessDetected {
+            pane_id,
+            agent: Agent::Pi,
+            observed_at: Instant::now(),
+        });
+        let direct_idle = state
+            .handle_app_event(AppEvent::StateChanged {
+                pane_id,
+                agent: Some(Agent::Pi),
+                state: AgentState::Idle,
+                visible_blocker: false,
+                visible_working: false,
+                background_work: false,
+                detector_generation: 0,
+                process_exited: false,
+                observed_at: Instant::now(),
+            })
+            .pop()
+            .expect("direct idle state update");
+        assert!(direct_idle.suppress_completion);
+
+        state.handle_app_event(AppEvent::AgentProcessDetected {
+            pane_id,
+            agent: Agent::Pi,
+            observed_at: Instant::now(),
+        });
+        for agent_state in [AgentState::Working, AgentState::Blocked] {
+            state.handle_app_event(AppEvent::StateChanged {
+                pane_id,
+                agent: Some(Agent::Pi),
+                state: agent_state,
+                visible_blocker: agent_state == AgentState::Blocked,
+                visible_working: agent_state == AgentState::Working,
+                background_work: false,
+                detector_generation: 0,
+                process_exited: false,
+                observed_at: Instant::now(),
+            });
+        }
+        let update = state
+            .handle_app_event(AppEvent::StateChanged {
+                pane_id,
+                agent: Some(Agent::Pi),
+                state: AgentState::Idle,
+                visible_blocker: false,
+                visible_working: false,
+                background_work: false,
+                detector_generation: 0,
+                process_exited: false,
+                observed_at: Instant::now(),
+            })
+            .pop()
+            .expect("idle state update");
+
+        assert!(update.suppress_completion);
+        assert!(state.workspaces[1].panes[&pane_id].seen);
+        assert!(!matches!(
+            state.toast.as_ref().map(|toast| toast.kind),
+            Some(ToastKind::Finished)
+        ));
+
+        state.handle_app_event(AppEvent::AgentProcessDetected {
+            pane_id,
+            agent: Agent::Codex,
+            observed_at: Instant::now(),
+        });
+        state.handle_app_event(AppEvent::StateChanged {
+            pane_id,
+            agent: Some(Agent::Codex),
+            state: AgentState::Working,
+            visible_blocker: false,
+            visible_working: true,
+            background_work: false,
+            detector_generation: 0,
+            process_exited: false,
+            observed_at: Instant::now(),
+        });
+        let exit_update = state
+            .handle_app_event(AppEvent::StateChanged {
+                pane_id,
+                agent: Some(Agent::Codex),
+                state: AgentState::Idle,
+                visible_blocker: false,
+                visible_working: false,
+                background_work: false,
+                detector_generation: 0,
+                process_exited: true,
+                observed_at: Instant::now(),
+            })
+            .pop()
+            .expect("process exit update");
+        assert!(!exit_update.suppress_completion);
     }
 
     #[test]

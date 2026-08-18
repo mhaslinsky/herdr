@@ -1,7 +1,7 @@
 id = "claude"
-version = "2026.08.12.2"
+version = "2026.08.13.1"
 min_engine_version = 4
-updated_at = "2026-08-12T00:00:00Z"
+updated_at = "2026-08-13T00:00:00Z"
 aliases = ["claude-code"]
 
 [[rules]]
@@ -17,8 +17,7 @@ state = "working"
 priority = 1100
 region = "osc_title"
 visible_working = true
-# Braille spinner is Claude Code <= 2.1.227; 2.1.228+ cycles half-circle
-# glyphs (observed ◐ U+25D0 and ◑ U+25D1 live; ◒ ◓ complete the family).
+# Braille covers <= 2.1.227; half-circles are the 2.1.228 busy spinner.
 regex = ['^[\x{2800}-\x{28FF}\x{25D0}-\x{25D3}] ']
 
 [[rules]]
