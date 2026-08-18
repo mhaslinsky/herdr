@@ -1239,22 +1239,44 @@ impl App {
         let Some(agent_label) = normalize_reported_agent_label(&params.agent) else {
             return invalid_agent(id);
         };
-        self.handle_internal_event(crate::events::AppEvent::HookStateReported {
-            pane_id,
-            session_ref: crate::agent_resume::session_ref_from_report(
-                &params.source,
-                &agent_label,
-                params.agent_session_id,
-                params.agent_session_path,
-            ),
-            source: params.source,
-            agent_label,
-            state: detect_state_from_api(params.state),
-            message: params.message,
-            seq: params.seq,
-        });
+        let public_pane_id = params.pane_id.clone();
+        let Some(disposition) =
+            self.handle_hook_report_with_pane_updates(crate::events::AppEvent::HookStateReported {
+                pane_id,
+                session_ref: crate::agent_resume::session_ref_from_report(
+                    &params.source,
+                    &agent_label,
+                    params.agent_session_id,
+                    params.agent_session_path,
+                ),
+                source: params.source,
+                agent_label,
+                state: detect_state_from_api(params.state),
+                message: params.message,
+                seq: params.seq,
+            })
+        else {
+            return pane_not_found(id, &public_pane_id);
+        };
 
-        encode_success(id, ResponseResult::Ok {})
+        match disposition {
+            crate::terminal::HookAuthorityDisposition::Rejected(
+                crate::terminal::HookAuthorityRejection::AuthorityConflict {
+                    current_owner_source,
+                },
+            ) => encode_error(
+                id,
+                "authority_conflict",
+                format!("hook authority is owned by source {current_owner_source}"),
+            ),
+            crate::terminal::HookAuthorityDisposition::Rejected(
+                crate::terminal::HookAuthorityRejection::StaleSequence,
+            ) => encode_error(id, "stale_sequence", "hook report sequence is stale"),
+            crate::terminal::HookAuthorityDisposition::Applied(_)
+            | crate::terminal::HookAuthorityDisposition::Silent(_) => {
+                encode_success(id, ResponseResult::Ok {})
+            }
+        }
     }
 
     pub(super) fn handle_pane_report_agent_session(

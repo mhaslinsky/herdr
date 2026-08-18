@@ -109,6 +109,52 @@ impl App {
         let _ = self.handle_internal_event_with_pane_updates(ev);
     }
 
+    pub(crate) fn handle_hook_report_with_pane_updates(
+        &mut self,
+        event: AppEvent,
+    ) -> Option<crate::terminal::HookAuthorityDisposition> {
+        let AppEvent::HookStateReported {
+            pane_id,
+            source,
+            agent_label,
+            state,
+            message,
+            seq,
+            session_ref,
+        } = event
+        else {
+            return None;
+        };
+        let previous_toast = self.state.toast.clone();
+        let (disposition, pane_updates) = self.state.handle_hook_state_report(
+            pane_id,
+            source,
+            agent_label,
+            state,
+            message,
+            seq,
+            session_ref,
+        )?;
+        self.sync_full_lifecycle_authority_detection_pauses();
+        for update in &pane_updates {
+            self.refresh_new_herdr_toast_context_for_update(update, &previous_toast);
+            self.emit_pane_state_update(update);
+        }
+        self.sync_agent_metadata_deadline();
+        if self.local_terminal_notifications
+            && matches!(
+                self.state.toast_config.delivery,
+                crate::config::ToastDelivery::Terminal | crate::config::ToastDelivery::System
+            )
+            && self.state.toast_config.delay_seconds == 0
+        {
+            self.emit_terminal_or_system_agent_notifications(&pane_updates);
+        }
+        self.sync_toast_deadline(previous_toast);
+        self.shutdown_detached_terminal_runtimes();
+        Some(disposition)
+    }
+
     pub(crate) fn handle_internal_event_with_pane_updates(
         &mut self,
         ev: AppEvent,
