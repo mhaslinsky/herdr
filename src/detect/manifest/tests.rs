@@ -1,11 +1,21 @@
 use super::*;
 
 fn remote_manifest(version: &str, state: &str, contains: &str) -> String {
+    remote_manifest_for("codex", version, state, contains, 1)
+}
+
+fn remote_manifest_for(
+    agent: &str,
+    version: &str,
+    state: &str,
+    contains: &str,
+    min_engine_version: u32,
+) -> String {
     format!(
         r#"
-id = "codex"
+id = "{agent}"
 version = "{version}"
-min_engine_version = 1
+min_engine_version = {min_engine_version}
 updated_at = "2026-06-10T12:00:00Z"
 
 [[rules]]
@@ -68,7 +78,11 @@ fn with_manifest_dirs<T>(name: &str, f: impl FnOnce() -> T) -> T {
 }
 
 fn write_remote_codex(content: &str) {
-    let path = crate::detect::manifest_update::remote_manifest_path(Agent::Codex);
+    write_remote_manifest(Agent::Codex, content);
+}
+
+fn write_remote_manifest(agent: Agent, content: &str) {
+    let path = crate::detect::manifest_update::remote_manifest_path(agent);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(path, content).unwrap();
     reload_manifests();
@@ -216,6 +230,63 @@ fn older_cached_remote_manifest_does_not_shadow_newer_bundled_manifest() {
             .warning
             .as_deref()
             .is_some_and(|warning| warning.contains("older than bundled")));
+    });
+}
+
+#[test]
+fn fork_marked_bundled_manifest_wins_over_equal_remote() {
+    with_manifest_dirs("fork-marked-equal-remote", || {
+        let bundled_version = bundled_manifest(Agent::Claude)
+            .and_then(|manifest| manifest.version)
+            .expect("bundled Claude manifest version");
+        write_remote_manifest(
+            Agent::Claude,
+            &remote_manifest_for(
+                "claude",
+                &bundled_version.to_string(),
+                "blocked",
+                "remote-ready",
+                4,
+            ),
+        );
+
+        let explain = explain(Agent::Claude, "remote-ready");
+
+        assert_eq!(explain.state, AgentState::Idle);
+        assert!(matches!(explain.source, Some(ManifestSource::Bundled)));
+        assert_eq!(
+            explain.cached_remote_version.as_deref(),
+            Some(bundled_version.to_string().as_str())
+        );
+        let expected_warning = format!(
+            "ignored remote manifest {} because bundled manifest is fork-marked",
+            crate::detect::manifest_update::remote_manifest_path(Agent::Claude).display()
+        );
+        assert_eq!(explain.warning.as_deref(), Some(expected_warning.as_str()));
+    });
+}
+
+#[test]
+fn fork_marked_bundled_manifest_wins_over_newer_remote() {
+    with_manifest_dirs("fork-marked-newer-remote", || {
+        write_remote_manifest(
+            Agent::Claude,
+            &remote_manifest_for("claude", "9999.01.01.1", "blocked", "remote-ready", 4),
+        );
+
+        let explain = explain(Agent::Claude, "remote-ready");
+
+        assert_eq!(explain.state, AgentState::Idle);
+        assert!(matches!(explain.source, Some(ManifestSource::Bundled)));
+        assert_eq!(
+            explain.cached_remote_version.as_deref(),
+            Some("9999.01.01.1")
+        );
+        let expected_warning = format!(
+            "ignored remote manifest {} because bundled manifest is fork-marked",
+            crate::detect::manifest_update::remote_manifest_path(Agent::Claude).display()
+        );
+        assert_eq!(explain.warning.as_deref(), Some(expected_warning.as_str()));
     });
 }
 
