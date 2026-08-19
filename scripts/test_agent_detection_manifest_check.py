@@ -5,9 +5,12 @@ from pathlib import Path
 from scripts import agent_detection_manifest_check as check
 
 
-def manifest(agent_id: str, version: str, contains: str = "ready") -> str:
+def manifest(
+    agent_id: str, version: str, contains: str = "ready", fork: bool = False
+) -> str:
+    fork_line = "fork = true\n" if fork else ""
     return f'''id = "{agent_id}"
-version = "{version}"
+{fork_line}version = "{version}"
 min_engine_version = 1
 updated_at = "2026-06-10T00:00:00Z"
 
@@ -58,6 +61,18 @@ class AgentDetectionManifestCheckTests(unittest.TestCase):
             bundled_manifests = check.load_manifest_dir(bundled, engine_version=1)
             check.validate_catalog(website, bundled_manifests, engine_version=1)
 
+    def test_loads_fork_marked_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundled = Path(tmp) / "bundled"
+            bundled.mkdir()
+            (bundled / "claude.toml").write_text(
+                manifest("claude", "2026.06.10.1", fork=True)
+            )
+
+            bundled_manifests = check.load_manifest_dir(bundled, engine_version=1)
+
+            self.assertTrue(bundled_manifests["claude"][1]["fork"])
+
     def test_rejects_website_version_lower_than_bundled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -86,9 +101,9 @@ class AgentDetectionManifestCheckTests(unittest.TestCase):
             with (website / "grok.toml").open("a") as manifest_file:
                 manifest_file.write("\n# unexpected mutation\n")
 
-            bundled_manifests = check.load_manifest_dir(bundled, engine_version=3)
+            bundled_manifests = check.load_manifest_dir(bundled, engine_version=4)
             with self.assertRaisesRegex(check.CheckError, "lower than bundled"):
-                check.validate_catalog(website, bundled_manifests, engine_version=3)
+                check.validate_catalog(website, bundled_manifests, engine_version=4)
 
     def test_rejects_unlisted_website_manifest_lag_for_new_engine(self):
         with tempfile.TemporaryDirectory() as tmp:

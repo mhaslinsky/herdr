@@ -143,6 +143,8 @@ struct ManifestCache {
 #[serde(deny_unknown_fields)]
 pub(crate) struct AgentManifest {
     id: String,
+    #[serde(default)]
+    fork: bool,
     version: Option<ManifestVersion>,
     min_engine_version: Option<u32>,
     #[serde(rename = "updated_at")]
@@ -742,6 +744,19 @@ fn read_remote_manifest(agent: Agent, bundled: &AgentManifest) -> Option<LoadedM
                 .as_ref()
                 .map(ToString::to_string)
                 .unwrap_or_else(|| "unknown".to_string());
+            // The updater still caches remotes, so the fork policy binds when the loader selects a source.
+            if bundled.fork {
+                return Some(bundled_loaded_manifest(
+                    agent,
+                    bundled.clone(),
+                    Some(format!(
+                        "ignored remote manifest {} because bundled manifest is fork-marked",
+                        path.display()
+                    )),
+                    Some(version),
+                    false,
+                ));
+            }
             if let (Some(remote_version), Some(bundled_version)) =
                 (manifest.version.as_ref(), bundled.version.as_ref())
             {

@@ -16,7 +16,15 @@ DEFAULT_BUNDLED_DIR = PROJECT_ROOT / "src" / "detect" / "manifests"
 DEFAULT_WEBSITE_DIR = PROJECT_ROOT / "website" / "agent-detection"
 ENGINE_SOURCE = PROJECT_ROOT / "src" / "detect" / "manifest_update.rs"
 
-MANIFEST_KEYS = {"id", "version", "min_engine_version", "updated_at", "aliases", "rules"}
+MANIFEST_KEYS = {
+    "id",
+    "fork",
+    "version",
+    "min_engine_version",
+    "updated_at",
+    "aliases",
+    "rules",
+}
 RULE_KEYS = {
     "id",
     "state",
@@ -59,7 +67,7 @@ MAX_MATCHER_CHARS = 512
 # the bundled Grok manifest.
 STAGED_WEBSITE_MANIFESTS = {
     "grok": (
-        "2026.07.16.2",
+        "2026.08.09.1",
         "2026.07.16.1",
         "1f35b3271a96cf830c64bed78751619bfd8013c277c0d7c0f999b7a433895f28",
     ),
@@ -128,6 +136,10 @@ def validate_manifest(path: Path, engine_version: int) -> dict:
     agent_id = manifest.get("id")
     if not isinstance(agent_id, str) or not agent_id.strip():
         raise CheckError(f"{path}: id must be a non-empty string")
+
+    fork = manifest.get("fork", False)
+    if not isinstance(fork, bool):
+        raise CheckError(f"{path}: fork must be a boolean")
 
     version = manifest.get("version")
     version_tuple(version, path)
