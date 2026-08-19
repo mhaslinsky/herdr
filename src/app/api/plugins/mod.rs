@@ -744,22 +744,26 @@ mod tests {
             .to_string()
     }
 
-    /// Wait for non-empty contents at `path`. Shell `>` creates the file empty
-    /// before the command writes, so waiting on existence alone can read EOF.
-    /// `pump` advances any event loop the command depends on.
-    fn read_capture_when_ready(path: &std::path::Path, mut pump: impl FnMut()) -> String {
+    fn read_capture_when_ready(
+        path: &std::path::Path,
+        expected_lines: usize,
+        mut pump: impl FnMut(),
+    ) -> String {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut last_seen = String::new();
         loop {
             pump();
             if let Ok(contents) = std::fs::read_to_string(path) {
-                if !contents.is_empty() {
+                if contents.ends_with('\n') && contents.lines().count() >= expected_lines {
                     return contents;
                 }
+                last_seen = contents;
             }
             assert!(
                 std::time::Instant::now() < deadline,
-                "plugin command did not write {} within deadline",
-                path.display()
+                "plugin command did not write {expected_lines} complete line(s) to {} within \
+                 deadline; last saw {last_seen:?}",
+                path.display(),
             );
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
@@ -1542,7 +1546,7 @@ command = ["sh", "-c", "printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \"$PWD\" \
         };
         assert!(app.state.plugin_panes.contains_key(&opened_pane_id));
 
-        let text = read_capture_when_ready(&capture, || {});
+        let text = read_capture_when_ready(&capture, 9, || {});
         let mut lines = text.lines();
         assert_eq!(lines.next(), Some(canonical_path_string(&root).as_str()));
         assert_eq!(lines.next(), Some("example.pane"));
@@ -1641,7 +1645,7 @@ command = ["sh", "-c", "printf '%s\n%s\n%s\n' \"$HERDR_PLUGIN_ROOT\" \"$HERDR_PL
             panic!("expected plugin pane opened response: {open}");
         };
 
-        let text = read_capture_when_ready(&capture, || {});
+        let text = read_capture_when_ready(&capture, 3, || {});
         let mut lines = text.lines();
         assert_eq!(lines.next(), Some(canonical_path_string(&root).as_str()));
         assert_eq!(
@@ -1951,7 +1955,7 @@ title = "Plugin Popup"
 placement = "popup"
 width = "80%"
 height = "40%"
-command = ["sh", "-c", "printf %s ${{HERDR_PANE_ID-unset}} > '{}'; sleep 1"]
+command = ["sh", "-c", "printf '%s\\n' ${{HERDR_PANE_ID-unset}} > '{}'; sleep 1"]
 "#,
             env_capture.display()
         );
@@ -1976,9 +1980,10 @@ command = ["sh", "-c", "printf %s ${{HERDR_PANE_ID-unset}} > '{}'; sleep 1"]
         });
         assert_eq!(response_result(&open), ResponseResult::Ok {});
         assert_eq!(
-            read_capture_when_ready(&env_capture, || {
+            read_capture_when_ready(&env_capture, 1, || {
                 app.drain_internal_events();
-            }),
+            })
+            .trim_end(),
             "unset"
         );
 
@@ -2457,7 +2462,7 @@ min_herdr_version = "0.6.10"
 platforms = ["linux", "macos"]
 
 [[startup]]
-command = ["sh", "-c", "printf '%s:%s' \"$HERDR_PLUGIN_ID\" \"$HERDR_PLUGIN_EVENT\" > {}"]
+command = ["sh", "-c", "printf '%s:%s\\n' \"$HERDR_PLUGIN_ID\" \"$HERDR_PLUGIN_EVENT\" > {}"]
 "#,
                 capture.display()
             ),
@@ -2467,9 +2472,10 @@ command = ["sh", "-c", "printf '%s:%s' \"$HERDR_PLUGIN_ID\" \"$HERDR_PLUGIN_EVEN
         app.run_plugin_startup_hooks();
 
         assert_eq!(
-            read_capture_when_ready(&capture, || {
+            read_capture_when_ready(&capture, 1, || {
                 app.drain_all_internal_events();
-            }),
+            })
+            .trim_end(),
             "example.startup:startup"
         );
         let plugin = app.state.installed_plugins.get("example.startup").unwrap();
@@ -2505,7 +2511,7 @@ platforms = ["linux", "macos"]
 
 [[events]]
 on = "worktree.created"
-command = ["sh", "-c", "printf '%s' \"$HERDR_PLUGIN_CONTEXT_JSON\" > {}"]
+command = ["sh", "-c", "printf '%s\\n' \"$HERDR_PLUGIN_CONTEXT_JSON\" > {}"]
 "#,
                 capture.display()
             ),
@@ -2530,9 +2536,12 @@ command = ["sh", "-c", "printf '%s' \"$HERDR_PLUGIN_CONTEXT_JSON\" > {}"]
         });
 
         let context: PluginInvocationContext =
-            serde_json::from_str(&read_capture_when_ready(&capture, || {
-                app.drain_all_internal_events();
-            }))
+            serde_json::from_str(
+                read_capture_when_ready(&capture, 1, || {
+                    app.drain_all_internal_events();
+                })
+                .trim_end(),
+            )
             .unwrap();
         assert_eq!(
             context.workspace_id.as_deref(),
