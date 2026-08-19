@@ -1,0 +1,21 @@
+src/app/api/plugins/mod.rs
+  s_d3b213b02551cb::t_d2821cd6fdca17 747-748
+src/terminal/state.rs
+  s_d3b213b02551cb::t_b8f661649e372c 3382
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "6fe58b9da740ff85188b2b2d30d5432d32f6fbea",
+  "prompts": {},
+  "sessions": {
+    "s_d3b213b02551cb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a017eb-87db-7ff1-bfdb-f9d77105472f",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
