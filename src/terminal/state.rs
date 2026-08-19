@@ -3378,8 +3378,8 @@ mod tests {
     fn rapid_restart_replays_reports_that_arrive_before_process_evidence() {
         let mut terminal = test_terminal();
         let session_path = test_session_path("reports-before-process-evidence.jsonl");
-        let now = Instant::now();
         terminal.set_detected_state(Some(Agent::Pi), AgentState::Idle);
+        let now = Instant::now();
         terminal.set_hook_authority_at(
             "herdr:pi".into(),
             "pi".into(),

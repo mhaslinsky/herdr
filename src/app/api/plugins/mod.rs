@@ -744,6 +744,8 @@ mod tests {
             .to_string()
     }
 
+    /// A first non-empty read is not sufficient: shell `>` creates the file empty before the write,
+    /// and a multi-line `printf` can be observed mid-write, so use the expected complete line count.
     fn read_capture_when_ready(
         path: &std::path::Path,
         expected_lines: usize,
