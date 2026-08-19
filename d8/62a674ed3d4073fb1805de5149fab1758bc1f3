@@ -1,0 +1,28 @@
+src/detect/manifest.rs
+  s_6599638ebcc9c5::t_6827509d82c04d 146-147
+  s_6599638ebcc9c5::t_fef0e3602eeb89 747-758
+src/detect/manifest/tests.rs
+  s_6599638ebcc9c5::t_abaf64120e815d 269
+  s_6599638ebcc9c5::t_a4e9f32f4222c6 4-13,16,18,81-85,236-268,270-281
+  s_6599638ebcc9c5::t_152d86f3caa789 282
+website/agent-detection/claude.toml
+  s_6599638ebcc9c5::t_a4e9f32f4222c6 2
+src/detect/manifests/claude.toml
+  s_6599638ebcc9c5::t_a4e9f32f4222c6 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "d862a674ed3d4073fb1805de5149fab1758bc1f3",
+  "prompts": {},
+  "sessions": {
+    "s_6599638ebcc9c5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01a94-a55c-7871-b408-8d3fb9a1bad5",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
