@@ -2535,14 +2535,13 @@ command = ["sh", "-c", "printf '%s\\n' \"$HERDR_PLUGIN_CONTEXT_JSON\" > {}"]
             },
         });
 
-        let context: PluginInvocationContext =
-            serde_json::from_str(
-                read_capture_when_ready(&capture, 1, || {
-                    app.drain_all_internal_events();
-                })
-                .trim_end(),
-            )
-            .unwrap();
+        let context: PluginInvocationContext = serde_json::from_str(
+            read_capture_when_ready(&capture, 1, || {
+                app.drain_all_internal_events();
+            })
+            .trim_end(),
+        )
+        .unwrap();
         assert_eq!(
             context.workspace_id.as_deref(),
             Some(target_workspace.workspace_id.as_str())
