@@ -108,6 +108,8 @@ pub struct App {
     pub(crate) event_rx: mpsc::Receiver<AppEvent>,
     pub(crate) api_rx: tokio::sync::mpsc::UnboundedReceiver<crate::api::ApiRequestMessage>,
     pub(crate) event_hub: crate::api::EventHub,
+    // KEEP commit 338b88e0 owns this field; upstream catch-up removed its readers.
+    #[expect(dead_code)]
     pub(crate) last_pane_state_updates: Vec<crate::app::actions::PaneStateUpdate>,
     pub(crate) last_focus: Option<(usize, crate::layout::PaneId)>,
     pub(crate) no_session: bool,
