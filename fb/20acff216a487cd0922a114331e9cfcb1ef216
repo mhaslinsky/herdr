@@ -1,0 +1,23 @@
+docs/next/CHANGELOG.md
+  s_feba250aaff581::t_7ca98c3a72b9da 63
+src/terminal/state.rs
+  s_feba250aaff581::t_ab8a0aa63118ab 5815-5868,5871-5884
+  s_feba250aaff581::t_fc6a7accdb7ae8 614-617,621-622,1819-1825,1852,1854
+  s_feba250aaff581::t_69b7f82a297e22 5869-5870
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "fb20acff216a487cd0922a114331e9cfcb1ef216",
+  "prompts": {},
+  "sessions": {
+    "s_feba250aaff581": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a015ee-fd81-77f2-ae2d-c5a425b2d501",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
