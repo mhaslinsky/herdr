@@ -1,0 +1,17 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "06ca0baa12f4203c5bbad9ecadf53f9a475a52b2",
+  "prompts": {},
+  "sessions": {
+    "s_d3b213b02551cb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a017eb-87db-7ff1-bfdb-f9d77105472f",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
