@@ -357,8 +357,8 @@ fn apply_terminal_attach_scroll(
     };
     if let AttachScrollSource::PageKey { input } = source {
         let host_scroll = runtime
-            .input_state()
-            .is_some_and(crate::pane::InputState::plain_page_keys_use_host_scrollback);
+            .plain_page_keys_use_host_scrollback()
+            .unwrap_or(false);
         if host_scroll {
             match direction {
                 AttachScrollDirection::Up => runtime.scroll_up(lines.max(1) as usize),
@@ -411,9 +411,15 @@ fn apply_terminal_attach_input(
     data: Vec<u8>,
 ) -> Result<(), String> {
     runtime.scroll_reset();
-    runtime
-        .try_send_bytes(Bytes::from(data))
-        .map_err(|err| format!("terminal attach input failed: {err}"))
+    if let Some(text) = crate::raw_input::complete_text_bracketed_paste(&data) {
+        runtime
+            .try_send_paste(text.to_owned())
+            .map_err(|err| format!("terminal attach paste failed: {err}"))
+    } else {
+        runtime
+            .try_send_bytes(Bytes::from(data))
+            .map_err(|err| format!("terminal attach input failed: {err}"))
+    }
 }
 
 #[cfg(windows)]
@@ -695,6 +701,7 @@ impl HeadlessServer {
             }
 
             self.drain_client_config_reload_request();
+            self.sync_immediate_pty_sources();
             self.stream_host_mouse_capture_mode();
             self.stream_host_keyboard_enhancement_flags();
 
@@ -3906,10 +3913,7 @@ impl HeadlessServer {
                             )
                         })
                 })
-                .and_then(crate::terminal::TerminalRuntime::input_state)
-                .is_some_and(|state| {
-                    state.mouse_protocol_encoding == crate::input::MouseProtocolEncoding::SgrPixels
-                });
+                .is_some_and(crate::terminal::TerminalRuntime::sgr_pixel_mouse_enabled);
         let mut broken_clients: Vec<u64> = Vec::new();
         for (&client_id, client) in &mut self.clients {
             if !client.is_full_app_client() {
@@ -3994,24 +3998,33 @@ impl HeadlessServer {
         needs_full_render: bool,
         needs_graphics_render: bool,
     ) -> bool {
-        if needs_full_render
-            || needs_graphics_render
-            || self.app.render_dirty.has_generic_or_terminal_title()
-        {
-            return true;
-        }
+        needs_full_render || needs_graphics_render || self.app.render_dirty.has_immediate_work()
+    }
 
+    fn sync_immediate_pty_sources(&self) {
         let (has_app_target, direct_terminal_targets) = self.pty_render_targets();
-        if !has_app_target && direct_terminal_targets.is_empty() {
-            return false;
+        let mut pane_ids = if has_app_target {
+            self.app.state.app_surface_pane_ids()
+        } else {
+            HashSet::new()
+        };
+        if !direct_terminal_targets.is_empty() {
+            for workspace in &self.app.state.workspaces {
+                for tab in &workspace.tabs {
+                    pane_ids.extend(tab.panes.iter().filter_map(|(&pane_id, pane)| {
+                        direct_terminal_targets
+                            .contains(pane.attached_terminal_id.as_str())
+                            .then_some(pane_id)
+                    }));
+                }
+            }
+            if let Some(popup) = &self.app.state.popup_pane {
+                if direct_terminal_targets.contains(popup.terminal_id.as_str()) {
+                    pane_ids.insert(popup.pane_id);
+                }
+            }
         }
-        self.app.render_dirty.has_pty_source_matching(|pane_id| {
-            self.pty_source_visible_to_render_targets(
-                pane_id,
-                has_app_target,
-                &direct_terminal_targets,
-            )
-        })
+        self.app.render_dirty.set_immediate_pty_sources(pane_ids);
     }
 
     fn pty_render_targets(&self) -> (bool, HashSet<&str>) {
@@ -7137,7 +7150,7 @@ next_tab = ""
         rt.shutdown_timeout(Duration::from_millis(100));
     }
 
-    fn with_terminal_attach_page_key_runtime(
+    fn with_terminal_attach_runtime(
         initial_bytes: &[u8],
         initial_scroll: usize,
         test: impl FnOnce(&crate::terminal::TerminalRuntime, &mut mpsc::Receiver<Bytes>),
@@ -7182,8 +7195,34 @@ next_tab = ""
     }
 
     #[test]
+    fn terminal_attach_paste_uses_plain_text_when_runtime_did_not_enable_brackets() {
+        with_terminal_attach_runtime(b"", 0, |runtime, input_rx| {
+            apply_terminal_attach_input(runtime, b"\x1b[200~line one\nline two\x1b[201~".to_vec())
+                .expect("attach paste");
+
+            assert_eq!(
+                input_rx.try_recv().expect("forwarded paste"),
+                Bytes::from_static(b"line one\nline two")
+            );
+        });
+    }
+
+    #[test]
+    fn terminal_attach_paste_preserves_brackets_when_runtime_enabled_them() {
+        with_terminal_attach_runtime(b"\x1b[?2004h", 0, |runtime, input_rx| {
+            apply_terminal_attach_input(runtime, b"\x1b[200~line one\nline two\x1b[201~".to_vec())
+                .expect("attach paste");
+
+            assert_eq!(
+                input_rx.try_recv().expect("forwarded paste"),
+                Bytes::from_static(b"\x1b[200~line one\nline two\x1b[201~")
+            );
+        });
+    }
+
+    #[test]
     fn terminal_attach_page_key_host_scrolls_plain_terminal() {
-        with_terminal_attach_page_key_runtime(b"", 0, |runtime, input_rx| {
+        with_terminal_attach_runtime(b"", 0, |runtime, input_rx| {
             apply_terminal_attach_page_up(runtime);
 
             assert_eq!(
@@ -7199,7 +7238,7 @@ next_tab = ""
 
     #[test]
     fn terminal_attach_page_key_forwards_when_mouse_reporting() {
-        with_terminal_attach_page_key_runtime(b"\x1b[?1000h", 3, |runtime, input_rx| {
+        with_terminal_attach_runtime(b"\x1b[?1000h", 3, |runtime, input_rx| {
             apply_terminal_attach_page_up(runtime);
 
             assert_eq!(
@@ -7218,7 +7257,7 @@ next_tab = ""
 
     #[test]
     fn terminal_attach_page_key_forwards_when_application_cursor() {
-        with_terminal_attach_page_key_runtime(b"\x1b[?1h", 3, |runtime, input_rx| {
+        with_terminal_attach_runtime(b"\x1b[?1h", 3, |runtime, input_rx| {
             apply_terminal_attach_page_up(runtime);
 
             assert_eq!(
@@ -7237,7 +7276,7 @@ next_tab = ""
 
     #[test]
     fn terminal_attach_page_key_host_scrolls_shell_like_decckm_with_bracketed_paste() {
-        with_terminal_attach_page_key_runtime(b"\x1b[?1h\x1b[?2004h", 0, |runtime, input_rx| {
+        with_terminal_attach_runtime(b"\x1b[?1h\x1b[?2004h", 0, |runtime, input_rx| {
             apply_terminal_attach_page_up(runtime);
 
             assert_eq!(
@@ -7253,7 +7292,7 @@ next_tab = ""
 
     #[test]
     fn terminal_attach_page_key_forwards_in_alternate_screen_without_mouse_reporting() {
-        with_terminal_attach_page_key_runtime(b"\x1b[?1049h", 3, |runtime, input_rx| {
+        with_terminal_attach_runtime(b"\x1b[?1049h", 3, |runtime, input_rx| {
             apply_terminal_attach_page_up(runtime);
 
             assert_eq!(
@@ -9592,6 +9631,7 @@ next_tab = ""
     fn visible_source_wakes_pending_hidden_work() {
         let (server, background_pane) = hidden_pty_visibility_test_server(&[(120, 40)]);
         let visible_pane = server.app.state.workspaces[0].tabs[0].root_pane;
+        server.sync_immediate_pty_sources();
 
         assert!(server.app.render_dirty.request_pty(background_pane));
         assert!(!server.has_pending_presentation_work(false, false));
@@ -9684,15 +9724,17 @@ next_tab = ""
     }
 
     #[test]
-    fn direct_terminal_observer_keeps_hidden_pty_source_renderable() {
-        let (mut server, background_pane) = hidden_pty_visibility_test_server(&[]);
+    fn direct_terminal_observer_keeps_hidden_pty_source_renderable_with_app_client() {
+        let (mut server, background_pane) = hidden_pty_visibility_test_server(&[(120, 40)]);
+        assert!(!server.pty_sources_visible_to_any_render_target(&HashSet::from([background_pane])));
+
         let terminal_id = server.app.state.workspaces[0]
             .terminal_id(background_pane)
             .expect("background terminal id")
             .to_string();
         let (client_tx, _client_control_rx, _client_rx) = test_client_writer();
         server.clients.insert(
-            1,
+            2,
             ClientConnection::new_with_mode(
                 ClientConnectionMode::TerminalObserve { terminal_id },
                 None,
@@ -9700,7 +9742,7 @@ next_tab = ""
                 crate::kitty_graphics::HostCellSize::default(),
                 crate::terminal_theme::TerminalTheme::default(),
                 None,
-                1,
+                2,
                 RenderEncoding::SemanticFrame,
                 false,
                 Some(client_tx),
@@ -9708,6 +9750,12 @@ next_tab = ""
         );
 
         assert!(server.pty_sources_visible_to_any_render_target(&HashSet::from([background_pane])));
+
+        let hidden_pane = server.app.state.workspaces[0].tabs[0].root_pane;
+        server.sync_immediate_pty_sources();
+        assert!(server.app.render_dirty.request_pty(background_pane));
+        assert!(server.has_pending_presentation_work(false, false));
+        assert!(server.app.render_dirty.request_pty(hidden_pane));
     }
 
     #[tokio::test]

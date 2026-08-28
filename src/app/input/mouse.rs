@@ -1761,9 +1761,7 @@ impl AppState {
         let Some(host) = self.host_mouse_pixels else {
             return Some(cell);
         };
-        let wants_pixels = runtime.input_state().is_some_and(|state| {
-            state.mouse_protocol_encoding == crate::input::MouseProtocolEncoding::SgrPixels
-        });
+        let wants_pixels = runtime.sgr_pixel_mouse_enabled();
         if !wants_pixels {
             return Some(cell);
         }
@@ -3398,7 +3396,7 @@ mod tests {
         app.state.workspaces = vec![Workspace::test_new("a"), Workspace::test_new("b")];
         app.state.active = Some(0);
         app.state.selected = 1;
-        app.state.mode = Mode::ConfirmClose;
+        app.state.begin_workspace_close_confirmation(1);
 
         let popup = app.state.confirm_close_rect();
         let inner = Rect::new(
