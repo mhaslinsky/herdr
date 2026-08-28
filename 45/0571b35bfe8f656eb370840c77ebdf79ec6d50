@@ -1,0 +1,61 @@
+src/terminal/state.rs
+  s_feba250aaff581::t_418213ce9dec9d 119,127,134-138
+  s_feba250aaff581::t_8932a0d1714765 734-736,741-746,754-758,778-780,813-815,821,5831-5834,5866-5868,5901-5903
+  s_1b19e9c8cc0ca2::t_c75323ae7511ee 868
+  s_feba250aaff581::t_28f30de170eb04 103-104,106-118,120,122-126,128-133,139-155
+  s_feba250aaff581::t_2a673edd1635e4 1739-1749
+  s_feba250aaff581::t_d2111171e0157b 5741,5847-5865,5869-5900,5904-5917
+  s_feba250aaff581::t_b300526c7bd15c 5742-5830,5835-5846
+  s_feba250aaff581::t_7748ff54f8a989 105,121,858
+  s_feba250aaff581::t_cddd52a594c87f 654,662-665,676,697,699-701,708-710,722-726,729-733,738-740,747-753,759,766-777,782-798,800-802,808-812,846-847
+  s_feba250aaff581::t_fac6d0aea73ecf 848,1841-1851,1856-1859,1868
+src/app/api/panes.rs
+  s_1b19e9c8cc0ca2::t_59f30a3bb56959 1275
+  s_feba250aaff581::t_8932a0d1714765 1243-1245,1247-1251,1257-1258
+  s_feba250aaff581::t_6d42aba7ab3249 1246,1252-1256
+  s_1b19e9c8cc0ca2::t_5911c256a71d0d 1264-1272
+  s_feba250aaff581::t_8d1e9cc57f9f43 1242,1259-1260,1262-1263,1273-1274,1276-1279
+src/api/schema/panes.rs
+  s_feba250aaff581::t_270bc3cea6d8fd 367
+  s_feba250aaff581::t_866b4a214d0524 368
+src/app/api.rs
+  s_feba250aaff581::t_6ada33da479b04 112-113,115,128-157
+  s_feba250aaff581::t_b83ffe94a47f5e 114,116-127
+docs/next/api/herdr-api.schema.json
+  s_feba250aaff581::t_de2cd0ebd61df2 2803
+src/app/actions.rs
+  s_feba250aaff581::t_1bd9d9cc340966 14-17,2728-2742,2744-2763
+  s_feba250aaff581::t_7748ff54f8a989 2743
+  s_feba250aaff581::t_cd86c13023a531 2764-2765
+  s_feba250aaff581::t_7a9187218ffb48 2875-2885
+tests/api_ping.rs
+  s_feba250aaff581::t_7591b27ed1a1c4 1831
+  s_feba250aaff581::t_8932a0d1714765 1705,1757,1776
+  s_feba250aaff581::t_6c8ce64c224821 221-277,1684-1704,1706-1756,1758-1775,1777-1830
+src/terminal/mod.rs
+  s_feba250aaff581::t_4aabd2e8249b5d 13-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "450571b35bfe8f656eb370840c77ebdf79ec6d50",
+  "prompts": {},
+  "sessions": {
+    "s_1b19e9c8cc0ca2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a049c4-f759-7f52-8624-afffadc008e1",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": null
+    },
+    "s_feba250aaff581": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a015ee-fd81-77f2-ae2d-c5a425b2d501",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Haslinsky <mike.haslinsky@creditgenie.com>"
+    }
+  }
+}
