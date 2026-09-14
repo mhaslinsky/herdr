@@ -193,10 +193,14 @@ fn pane_surface_topology_signature(surface: &PaneSurfaceFrame) -> u64 {
 
 fn status_icon(
     status: crate::api::schema::AgentStatus,
+    background_work: bool,
     style: crate::config::StatusIndicatorStyle,
 ) -> &'static str {
     use crate::api::schema::AgentStatus;
     use crate::config::StatusIndicatorStyle;
+    if status == AgentStatus::Idle && background_work {
+        return "◐";
+    }
     match (style, status) {
         (
             StatusIndicatorStyle::Dots,
@@ -212,23 +216,33 @@ fn status_icon(
     }
 }
 
-fn status_dot(status: crate::api::schema::AgentStatus) -> &'static str {
-    status_icon(status, crate::config::StatusIndicatorStyle::Dots)
+fn status_dot(status: crate::api::schema::AgentStatus, background_work: bool) -> &'static str {
+    status_icon(
+        status,
+        background_work,
+        crate::config::StatusIndicatorStyle::Dots,
+    )
 }
 
-fn status_priority(status: crate::api::schema::AgentStatus) -> u8 {
+fn status_priority(status: crate::api::schema::AgentStatus, background_work: bool) -> u8 {
     use crate::api::schema::AgentStatus;
+    if status == AgentStatus::Idle && background_work {
+        return 2;
+    }
     match status {
-        AgentStatus::Blocked => 4,
-        AgentStatus::Done => 3,
-        AgentStatus::Working => 2,
+        AgentStatus::Blocked => 5,
+        AgentStatus::Done => 4,
+        AgentStatus::Working => 3,
         AgentStatus::Idle => 1,
         AgentStatus::Unknown => 0,
     }
 }
 
-fn status_text(status: crate::api::schema::AgentStatus) -> &'static str {
+fn status_text(status: crate::api::schema::AgentStatus, background_work: bool) -> &'static str {
     use crate::api::schema::AgentStatus;
+    if status == AgentStatus::Idle && background_work {
+        return "waiting";
+    }
     match status {
         AgentStatus::Working => "working",
         AgentStatus::Blocked => "blocked",
@@ -240,9 +254,13 @@ fn status_text(status: crate::api::schema::AgentStatus) -> &'static str {
 
 fn status_color(
     status: crate::api::schema::AgentStatus,
+    background_work: bool,
     palette: &Palette,
 ) -> ratatui::style::Color {
     use crate::api::schema::AgentStatus;
+    if status == AgentStatus::Idle && background_work {
+        return palette.blue;
+    }
     match status {
         AgentStatus::Working => palette.yellow,
         AgentStatus::Blocked => palette.red,

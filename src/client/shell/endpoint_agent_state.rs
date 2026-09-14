@@ -72,6 +72,9 @@ impl EndpointAgentPresentation {
     }
 
     fn projected_status(&self, agent: &ClientShellAgent) -> AgentStatus {
+        if agent.agent_status == AgentStatus::Idle && agent.background_work {
+            return AgentStatus::Idle;
+        }
         match agent.agent_status {
             AgentStatus::Idle | AgentStatus::Done => {
                 if self
@@ -95,8 +98,8 @@ fn project_aggregate_status(snapshot: &mut ClientShellSnapshot) {
             .agents
             .iter()
             .filter(|agent| agent.tab_id == tab.tab_id)
+            .max_by_key(|agent| super::status_priority(agent.agent_status, agent.background_work))
             .map(|agent| agent.agent_status)
-            .max_by_key(|status| super::status_priority(*status))
         {
             tab.agent_status = status;
         }
@@ -106,8 +109,8 @@ fn project_aggregate_status(snapshot: &mut ClientShellSnapshot) {
             .agents
             .iter()
             .filter(|agent| agent.workspace_id == workspace.workspace_id)
+            .max_by_key(|agent| super::status_priority(agent.agent_status, agent.background_work))
             .map(|agent| agent.agent_status)
-            .max_by_key(|status| super::status_priority(*status))
         {
             workspace.agent_status = status;
         }
@@ -131,6 +134,7 @@ mod tests {
             terminal_title: None,
             terminal_title_stripped: None,
             agent_status: status,
+            background_work: false,
             state_change_seq: sequence,
             state_labels: Vec::new(),
             tokens: Vec::new(),

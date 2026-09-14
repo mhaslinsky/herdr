@@ -30,6 +30,7 @@ fn agent(
         terminal_title: None,
         terminal_title_stripped: None,
         agent_status: status,
+        background_work: false,
         state_change_seq,
         state_labels: Vec::new(),
         tokens: Vec::new(),

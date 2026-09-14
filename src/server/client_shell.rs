@@ -146,6 +146,7 @@ pub(super) fn snapshot(
                 terminal_title: agent.terminal_title,
                 terminal_title_stripped: agent.terminal_title_stripped,
                 agent_status: agent.agent_status,
+                background_work: agent.background_work,
                 state_change_seq: agent.state_change_seq,
                 state_labels,
                 tokens,
@@ -657,5 +658,38 @@ mod tests {
             split_hit_rect(&horizontal, false, true, &[Rect::new(19, 3, 1, 12)]),
             None
         );
+    }
+
+    #[test]
+    fn codex_review_background_fact_reaches_client_snapshot() {
+        let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut app = crate::app::App::new(
+            &crate::config::Config::default(),
+            crate::app::AppPolicy::TEST,
+            None,
+            api_rx,
+            crate::api::EventHub::default(),
+        );
+        app.state.workspaces = vec![crate::workspace::Workspace::test_new("background")];
+        app.state.ensure_test_terminals();
+        app.state.active = Some(0);
+        let pane_id = app.state.workspaces[0].tabs[0].root_pane;
+        let terminal_id = app.state.workspaces[0].tabs[0].panes[&pane_id]
+            .attached_terminal_id
+            .clone();
+        let terminal = app.state.terminals.get_mut(&terminal_id).unwrap();
+        terminal.detected_agent = Some(crate::detect::Agent::Claude);
+        terminal.state = crate::detect::AgentState::Idle;
+        let before = snapshot(&app, "review", 1, None, None);
+        assert_eq!(before.agents.len(), 1);
+        assert!(!before.agents[0].background_work);
+        app.state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .background_work = true;
+        assert!(app.session_snapshot().agents[0].background_work);
+        let after = snapshot(&app, "review", 1, None, None);
+        assert!(after.agents[0].background_work);
     }
 }

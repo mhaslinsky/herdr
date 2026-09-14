@@ -109,10 +109,10 @@ fn render_header_status(
         name_width.min(3),
         &format!(
             " {} ",
-            status_icon(workspace.agent_status, config.status_indicators)
+            status_icon(workspace.agent_status, false, config.status_indicators)
         ),
         Style::default()
-            .fg(status_color(workspace.agent_status, palette))
+            .fg(status_color(workspace.agent_status, false, palette))
             .bg(palette.panel_bg),
     );
     put_text(
@@ -195,6 +195,7 @@ fn render_header_button(
             1,
             status_icon(
                 crate::api::schema::AgentStatus::Blocked,
+                false,
                 config.status_indicators,
             ),
             Style::default().fg(palette.red).bg(palette.surface0),
@@ -297,7 +298,7 @@ fn render_agent_summary(
             (crate::config::StatusIndicatorStyle::Dots, AgentStatus::Blocked) => Some("◉"),
             (crate::config::StatusIndicatorStyle::Dots, AgentStatus::Done) => Some("●"),
             (crate::config::StatusIndicatorStyle::Dots, _) => None,
-            _ => Some(status_icon(status, config.status_indicators)),
+            _ => Some(status_icon(status, false, config.status_indicators)),
         };
         let text = symbol.map_or_else(
             || format!("{count} {label}"),
@@ -324,7 +325,7 @@ fn render_agent_summary(
         let color = if shown == 0 {
             match status {
                 AgentStatus::Done => config.palette.blue,
-                _ => status_color(status, &config.palette),
+                _ => status_color(status, false, &config.palette),
             }
         } else {
             config.palette.overlay1
@@ -663,7 +664,7 @@ fn mobile_items(
             if let Some(tab) = tab.filter(|tab| tab.custom_label || workspace_tab_count > 1) {
                 detail.push(tab.label.clone());
             }
-            let status_key = status_text(agent.agent_status);
+            let status_key = status_text(agent.agent_status, agent.background_work);
             detail.push(
                 agent
                     .state_labels
@@ -702,12 +703,16 @@ fn mobile_items(
                     Line::from(vec![
                         Span::styled("  ", Style::default().bg(background)),
                         Span::styled(
-                            status_icon(agent.agent_status, config.status_indicators),
+                            status_icon(
+                                agent.agent_status,
+                                agent.background_work,
+                                config.status_indicators,
+                            ),
                             Style::default()
                                 .fg(if endpoint.stale() {
                                     palette.overlay0
                                 } else {
-                                    status_color(agent.agent_status, palette)
+                                    status_color(agent.agent_status, agent.background_work, palette)
                                 })
                                 .bg(background)
                                 .add_modifier(dim),
@@ -805,7 +810,7 @@ fn mobile_items(
             let status = if endpoint.stale() {
                 palette.overlay0
             } else {
-                status_color(workspace.agent_status, palette)
+                status_color(workspace.agent_status, false, palette)
             };
             let stale_detail = if endpoint.stale() {
                 format!(" · {}", mobile_endpoint_state(endpoint.status))
@@ -823,7 +828,7 @@ fn mobile_items(
                                 .add_modifier(dim),
                         ),
                         Span::styled(
-                            status_icon(workspace.agent_status, config.status_indicators),
+                            status_icon(workspace.agent_status, false, config.status_indicators),
                             Style::default().fg(status).bg(background).add_modifier(dim),
                         ),
                         Span::styled(" ", Style::default().bg(background)),

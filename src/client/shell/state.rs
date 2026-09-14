@@ -409,6 +409,7 @@ pub(super) struct ClientNavigatorRow {
     pub(super) label: String,
     pub(super) meta: String,
     pub(super) status: Option<crate::api::schema::AgentStatus>,
+    pub(super) background_work: bool,
     pub(super) stale: bool,
     pub(super) current: bool,
     pub(super) target: ClientNavigatorTarget,

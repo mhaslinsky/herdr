@@ -76,7 +76,10 @@ pub(super) fn aggregate_agent_rows(
         rows.sort_by_key(|row| {
             (
                 row.endpoint.stale(),
-                std::cmp::Reverse(status_priority(row.agent.agent_status)),
+                std::cmp::Reverse(status_priority(
+                    row.agent.agent_status,
+                    row.agent.background_work,
+                )),
                 std::cmp::Reverse(row.recency),
             )
         });
@@ -166,6 +169,7 @@ pub(super) fn navigator_rows(
                                 label,
                                 meta,
                                 status: Some(status),
+                                background_work: agent.is_some_and(|agent| agent.background_work),
                                 stale,
                                 current: endpoint.endpoint_id == *active_endpoint_id
                                     && snapshot.focused_pane_id.as_deref() == Some(&pane.pane_id),
@@ -192,6 +196,7 @@ pub(super) fn navigator_rows(
                                     .count()
                             ),
                             status: None,
+                            background_work: false,
                             stale,
                             current: false,
                             target: ClientNavigatorTarget::Tab {
@@ -211,6 +216,7 @@ pub(super) fn navigator_rows(
                         label: workspace.label.clone(),
                         meta: workspace_meta,
                         status: None,
+                        background_work: false,
                         stale,
                         current: false,
                         target: ClientNavigatorTarget::Workspace {
@@ -231,6 +237,7 @@ pub(super) fn navigator_rows(
                     label: endpoint.label.to_owned(),
                     meta: String::new(),
                     status: None,
+                    background_work: false,
                     stale,
                     current: false,
                     target: ClientNavigatorTarget::Machine {

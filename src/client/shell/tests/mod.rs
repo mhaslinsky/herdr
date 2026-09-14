@@ -65,6 +65,25 @@ pub(super) fn snapshot() -> ClientShellSnapshot {
     }
 }
 
+#[test]
+fn waiting_status_uses_the_client_shell_waiting_presentation() {
+    let palette = Palette::catppuccin();
+
+    assert_eq!(status_text(AgentStatus::Idle, true), "waiting");
+    assert_eq!(
+        status_icon(
+            AgentStatus::Idle,
+            true,
+            crate::config::StatusIndicatorStyle::Dots,
+        ),
+        "◐"
+    );
+    assert_eq!(
+        status_color(AgentStatus::Idle, true, &palette),
+        palette.blue
+    );
+}
+
 fn worktree_list_result(open_workspace_id: Option<&str>) -> crate::api::schema::ResponseResult {
     crate::api::schema::ResponseResult::WorktreeList {
         source: crate::api::schema::WorktreeSourceInfo {

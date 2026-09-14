@@ -13,6 +13,7 @@ use super::*;
 pub(super) struct AgentRow {
     pub(super) pane_id: String,
     pub(super) status: crate::api::schema::AgentStatus,
+    pub(super) background_work: bool,
     pub(super) focused: bool,
     pub(super) rows: Vec<Vec<crate::ui::ResolvedToken>>,
 }
@@ -38,7 +39,7 @@ pub(super) fn ordered_agent_pane_ids(
     if sort == crate::config::AgentPanelSortConfig::Priority {
         agents.sort_by_key(|agent| {
             (
-                std::cmp::Reverse(status_priority(agent.agent_status)),
+                std::cmp::Reverse(status_priority(agent.agent_status, agent.background_work)),
                 std::cmp::Reverse(agent.state_change_seq),
             )
         });
@@ -276,9 +277,9 @@ pub(super) fn agent_rows(
                 .collect::<HashMap<_, _>>();
             let tokens = agent.tokens.iter().cloned().collect::<HashMap<_, _>>();
             let state_text = labels
-                .get(status_text(agent.agent_status))
+                .get(status_text(agent.agent_status, agent.background_work))
                 .map(String::as_str)
-                .unwrap_or_else(|| sidebar_status_text(agent.agent_status));
+                .unwrap_or_else(|| sidebar_status_text(agent.agent_status, agent.background_work));
             let canonical_agent = agent
                 .agent
                 .as_deref()
@@ -304,6 +305,7 @@ pub(super) fn agent_rows(
             Some(AgentRow {
                 pane_id: agent.pane_id.clone(),
                 status: agent.agent_status,
+                background_work: agent.background_work,
                 focused: agent.focused,
                 rows,
             })
@@ -333,7 +335,7 @@ pub(super) fn render_agent_row(
             .add_modifier(Modifier::BOLD)
     };
     let status_style = Style::default()
-        .fg(status_color(row.status, palette))
+        .fg(status_color(row.status, row.background_work, palette))
         .add_modifier(if row.focused {
             Modifier::empty()
         } else {
@@ -343,8 +345,8 @@ pub(super) fn render_agent_row(
         .fg(palette.overlay0)
         .add_modifier(Modifier::DIM);
     let icon = (
-        status_icon(row.status, config.status_indicators),
-        Style::default().fg(status_color(row.status, palette)),
+        status_icon(row.status, row.background_work, config.status_indicators),
+        Style::default().fg(status_color(row.status, row.background_work, palette)),
     );
     let rows = if row.rows.is_empty() {
         vec![vec![crate::ui::ResolvedToken {
@@ -386,8 +388,14 @@ fn display_width(text: &str) -> usize {
     unicode_width::UnicodeWidthStr::width(text)
 }
 
-fn sidebar_status_text(status: crate::api::schema::AgentStatus) -> &'static str {
+fn sidebar_status_text(
+    status: crate::api::schema::AgentStatus,
+    background_work: bool,
+) -> &'static str {
     use crate::api::schema::AgentStatus;
+    if status == AgentStatus::Idle && background_work {
+        return "waiting";
+    }
     match status {
         AgentStatus::Blocked => "blocked",
         AgentStatus::Done => "done",

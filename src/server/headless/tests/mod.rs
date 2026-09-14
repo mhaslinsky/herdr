@@ -6308,3 +6308,58 @@ fn no_handle_internal_event_bypass_in_module() {
         bypass_lines.join("\n  ")
     );
 }
+
+#[test]
+fn codex_review_deferred_completion_on_background_clear() {
+    let mut server = test_headless_server();
+    let mut workspace = crate::workspace::Workspace::test_new("background");
+    let pane_id = workspace.tabs[0].root_pane;
+    let foreground_tab = workspace.test_add_tab(Some("foreground"));
+    workspace.active_tab = foreground_tab;
+    server.app.state.workspaces = vec![workspace];
+    server.app.state.ensure_test_terminals();
+    server.app.state.active = Some(0);
+    server.app.state.selected = 0;
+    server.app.state.mode = crate::app::Mode::Terminal;
+    server.app.state.toast_config.delivery = crate::config::ToastDelivery::System;
+    server.app.state.toast_config.delay_seconds = 0;
+
+    let (client_tx, client_control_rx, _client_rx) = test_client_writer();
+    server.clients.insert(
+        1,
+        ClientConnection::new(
+            (80, 24),
+            crate::kitty_graphics::HostCellSize::default(),
+            1,
+            RenderEncoding::SemanticFrame,
+            Some(client_tx),
+        ),
+    );
+    server.foreground_client_id = Some(1);
+    server.sync_foreground_client_state();
+
+    for (state, background_work) in [
+        (crate::detect::AgentState::Working, false),
+        (crate::detect::AgentState::Idle, true),
+    ] {
+        assert!(
+            server.handle_internal_event_with_forwarding(AppEvent::StateChanged {
+                pane_id,
+                agent: Some(crate::detect::Agent::Pi),
+                state,
+                visible_blocker: false,
+                visible_working: false,
+                background_work,
+                detector_generation: 0,
+                process_exited: false,
+                observed_at: Instant::now(),
+            })
+        );
+    }
+    assert!(
+        client_control_rx
+            .recv_timeout(Duration::from_millis(50))
+            .is_err(),
+        "deferred completion must not notify"
+    );
+}

@@ -1070,6 +1070,8 @@ pub struct ClientShellAgent {
     pub terminal_title_stripped: Option<String>,
     #[serde(deserialize_with = "deserialize_client_shell_agent_status")]
     pub agent_status: crate::api::schema::AgentStatus,
+    #[serde(default)]
+    pub background_work: bool,
     pub state_change_seq: u64,
     pub state_labels: Vec<(String, String)>,
     pub tokens: Vec<(String, String)>,

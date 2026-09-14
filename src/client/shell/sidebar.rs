@@ -82,8 +82,8 @@ pub(crate) fn render_collapsed_sidebar(
             rect.x.saturating_add(2),
             rect.y,
             rect.width.saturating_sub(2),
-            status_icon(status, config.status_indicators),
-            Style::default().fg(status_color(status, palette)),
+            status_icon(status, false, config.status_indicators),
+            Style::default().fg(status_color(status, false, palette)),
         );
         hits.workspaces.push(WorkspaceHit {
             rect,
@@ -149,8 +149,16 @@ pub(crate) fn render_collapsed_sidebar(
             rect.x.saturating_add(2),
             rect.y,
             rect.width.saturating_sub(2),
-            status_icon(agent.agent_status, config.status_indicators),
-            Style::default().fg(status_color(agent.agent_status, palette)),
+            status_icon(
+                agent.agent_status,
+                agent.background_work,
+                config.status_indicators,
+            ),
+            Style::default().fg(status_color(
+                agent.agent_status,
+                agent.background_work,
+                palette,
+            )),
         );
         hits.agents.push((rect, pane_id));
     }
@@ -579,7 +587,7 @@ pub(super) fn displayed_workspace_status(
                 .is_some_and(|candidate| candidate.key == worktree.key)
         })
         .map(|candidate| candidate.agent_status)
-        .max_by_key(|status| status_priority(*status))
+        .max_by_key(|status| status_priority(*status, false))
         .unwrap_or(workspace.agent_status)
 }
 
@@ -604,7 +612,7 @@ pub(in crate::client::shell) fn workspace_rows(
         crate::ui::SpaceTokenContext {
             workspace: label,
             branch: workspace.branch.as_deref(),
-            state_text: status_text(status),
+            state_text: status_text(status, false),
             ahead_behind: workspace.git_ahead_behind,
             tokens: &token_values,
             suppress_git_details: indented,
@@ -676,11 +684,11 @@ pub(in crate::client::shell) fn render_workspace_rows(
         let spans = crate::ui::resolved_token_spans(
             row,
             (
-                status_icon(status, indicators),
-                Style::default().fg(status_color(status, palette)),
+                status_icon(status, false, indicators),
+                Style::default().fg(status_color(status, false, palette)),
             ),
             Style::default()
-                .fg(status_color(status, palette))
+                .fg(status_color(status, false, palette))
                 .add_modifier(Modifier::DIM),
             workspace_style,
             secondary_style,

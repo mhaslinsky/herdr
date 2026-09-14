@@ -23,13 +23,17 @@ pub(super) fn render_collapsed(
             rect.width,
             &format!(
                 "{initial}{}",
-                status_icon(row.agent.status, config.status_indicators)
+                status_icon(
+                    row.agent.status,
+                    row.agent.background_work,
+                    config.status_indicators,
+                )
             ),
             Style::default()
                 .fg(if row.stale {
                     config.palette.overlay0
                 } else {
-                    status_color(row.agent.status, &config.palette)
+                    status_color(row.agent.status, row.agent.background_work, &config.palette)
                 })
                 .add_modifier(if row.stale {
                     Modifier::DIM
